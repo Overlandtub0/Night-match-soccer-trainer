@@ -785,7 +785,19 @@ function bootApp() {
   renderChips();
 }
 
+// The intro overlay plays on every load, then removes itself so it never
+// intercepts clicks. CSS drives the visuals; this only cleans up the node.
+function initIntro() {
+  const intro = document.getElementById('intro');
+  if (!intro) return;
+  let killed = false;
+  const kill = () => { if (killed) return; killed = true; intro.remove(); };
+  intro.addEventListener('animationend', e => { if (e.animationName === 'introOut') kill(); });
+  setTimeout(kill, 4000); // safety net if animationend never fires
+}
+
 function init() {
+  initIntro();
   initNav();
   initSettings();
   initCoach();

@@ -75,6 +75,63 @@ body {
 .bg-grain { position: absolute; inset: 0; opacity: .035; pointer-events: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
 
+/* ---------- Intro animation: floodlights ignite ---------- */
+#intro { position: fixed; inset: 0; z-index: 200; overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 120%, #0c130e 0%, #05080601 60%), #050806;
+  display: grid; place-items: center;
+  animation: introOut .6s var(--ease) 2.35s forwards; }
+@keyframes introOut { to { opacity: 0; visibility: hidden; pointer-events: none; } }
+
+.intro-sky { position: absolute; inset: 0; }
+.flood { position: absolute; top: -4%; width: 25%; height: 70%; display: flex; justify-content: center;
+  opacity: 0; animation: floodOn .7s var(--ease) forwards; }
+.f1 { left: 0; animation-delay: .30s; }
+.f2 { left: 25%; animation-delay: .48s; }
+.f3 { left: 50%; animation-delay: .40s; }
+.f4 { left: 75%; animation-delay: .58s; }
+@keyframes floodOn { 0% { opacity: 0; } 9% { opacity: 1; filter: brightness(1.7); } 24% { opacity: .82; filter: brightness(1); } 100% { opacity: .9; } }
+.flood-src { position: absolute; top: 6%; width: 120px; height: 120px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(226,240,228,.95) 0%, rgba(210,230,215,.5) 30%, transparent 68%);
+  filter: blur(2px); }
+.flood-beam { position: absolute; top: 8%; width: 78%; height: 118%;
+  background: linear-gradient(180deg, rgba(214,232,218,.34) 0%, rgba(214,232,218,.08) 42%, transparent 82%);
+  clip-path: polygon(38% 0, 62% 0, 100% 100%, 0% 100%); filter: blur(9px); }
+
+.intro-pitch { position: absolute; inset: -3% -3% auto -3%; height: 108%; color: #e7efe9; opacity: 0;
+  mask-image: radial-gradient(120% 80% at 50% 20%, #000 20%, transparent 76%);
+  animation: pitchUp 1s var(--ease) .95s forwards; }
+.intro-pitch svg { width: 100%; height: 100%; }
+@keyframes pitchUp { from { opacity: 0; transform: scale(1.05); } to { opacity: .13; transform: none; } }
+
+.intro-word { position: relative; z-index: 2; display: flex; align-items: center; }
+.intro-title { font-family: var(--font-display); font-weight: 700; text-transform: uppercase;
+  font-size: clamp(52px, 13vw, 160px); line-height: .9; letter-spacing: .02em; color: var(--chalk); white-space: nowrap;
+  opacity: 0; animation: wordRise .85s var(--ease) 1.45s forwards; }
+.intro-title .ignite { position: relative; color: transparent; -webkit-text-fill-color: transparent;
+  background: var(--grad-flare); -webkit-background-clip: text; background-clip: text;
+  animation: igniteGlow 1.4s var(--ease) 1.75s forwards; }
+@keyframes wordRise {
+  from { opacity: 0; transform: translateY(18px); letter-spacing: .32em; filter: blur(6px); }
+  60% { opacity: 1; }
+  to { opacity: 1; transform: none; letter-spacing: .02em; filter: none; } }
+@keyframes igniteGlow { 0% { filter: drop-shadow(0 0 0 rgba(255,77,46,0)); } 40% { filter: drop-shadow(0 0 26px rgba(255,77,46,.65)); } 100% { filter: drop-shadow(0 0 12px rgba(255,77,46,.32)); } }
+.intro-dot { width: clamp(9px, 2vw, 18px); height: clamp(9px, 2vw, 18px); border-radius: 50%; margin-left: clamp(8px, 1.5vw, 20px);
+  background: var(--flare); opacity: 0; align-self: flex-start; margin-top: clamp(8px, 2vw, 26px);
+  animation: dotIn .5s var(--ease) 2s forwards, pulse 1.6s ease-in-out 2.5s infinite; }
+@keyframes dotIn { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: scale(1); box-shadow: var(--glow-flare); } }
+.intro-sweep { position: absolute; left: 0; bottom: -14px; height: 2px; width: 0;
+  background: linear-gradient(90deg, transparent, var(--flare) 20%, var(--flare-2) 80%, transparent);
+  animation: sweepIn .7s var(--ease) 1.9s forwards; }
+@keyframes sweepIn { from { width: 0; opacity: 0; } 50% { opacity: 1; } to { width: 100%; opacity: .85; } }
+
+@media (prefers-reduced-motion: reduce) {
+  #intro { animation: introOut .01s linear 1s forwards; }
+  .flood { opacity: .88; animation: none; }
+  .intro-pitch { opacity: .12; animation: none; }
+  .intro-title, .intro-dot { opacity: 1; animation: none; }
+  .intro-sweep { width: 100%; opacity: .8; animation: none; }
+}
+
 /* ---------- Surfaces ---------- */
 .glass {
   background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.012));
