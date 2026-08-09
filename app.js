@@ -625,12 +625,15 @@ function renderSaved() {
     return;
   }
   list.innerHTML = saved.map(item => {
-    const isPlan = item.type === 'plan';
-    const snippet = isPlan ? (item.plan?.overview || '') : (parseSections(item.text)[0]?.body || item.text).slice(0, 180);
+    const kind = item.type === 'plan' ? 'PLAN' : item.type === 'analysis' ? 'ANALYSIS' : 'ANSWER';
+    let snippet = '';
+    if (item.type === 'plan') snippet = item.plan?.overview || '';
+    else if (item.type === 'analysis') snippet = item.analysis?.report?.coachNote || item.analysis?.report?.headline || '';
+    else snippet = (parseSections(item.text || '')[0]?.body || item.text || '').slice(0, 180);
     return `<div class="saved-item" data-id="${item.id}">
       <button class="saved-x" data-del="${item.id}" title="Remove">&times;</button>
       <div class="saved-q">${esc(item.question)}</div>
-      <div class="saved-meta"><span class="saved-tag">${isPlan ? 'PLAN' : 'ANSWER'}</span><span>${timeAgo(item.ts)}</span></div>
+      <div class="saved-meta"><span class="saved-tag">${kind}</span><span>${timeAgo(item.ts)}</span></div>
       <div class="saved-snippet">${esc(snippet)}</div>
       <div class="saved-full hidden"></div>
     </div>`;
@@ -643,7 +646,9 @@ function renderSaved() {
       const item = store.get('saved', []).find(s => s.id === el.dataset.id);
       if (!item) return;
       if (full.classList.contains('hidden')) {
-        full.innerHTML = item.type === 'plan' ? planStaticHTML(item.plan) : coachAnswerStaticHTML(item.text, item.sources);
+        full.innerHTML = item.type === 'plan' ? planStaticHTML(item.plan)
+          : item.type === 'analysis' ? analysisStaticHTML(item.analysis)
+          : coachAnswerStaticHTML(item.text, item.sources);
         full.classList.remove('hidden');
         $('.saved-snippet', el).style.display = 'none';
       } else {
@@ -671,6 +676,39 @@ function coachAnswerStaticHTML(text, sources) {
     sources.slice(0, 8).map((s, i) => `<a class="source-pill" href="${esc(s.uri)}" target="_blank" rel="noopener"><span class="src-num">${i + 1}</span><span class="src-t">${esc(s.title || hostOf(s.uri))}</span></a>`).join('') + `</div></div>`;
   return `<div style="margin-top:16px">${inner}</div>`;
 }
+function analysisStaticHTML(a) {
+  if (!a) return '';
+  const r = a.report || {}, m = a.metrics || {};
+  const rows = [
+    // sprint metrics
+    ['Cadence', m.cadence, 'steps/sec'], ['Knee drive', m.kneeDriveDeg, '°'],
+    ['Step symmetry', m.stepSymmetryPct, '%'], ['Arm symmetry', m.armSymmetryPct, '%'],
+    ['Top speed', m.estTopSpeedMps, 'm/s'],
+    // shooting metrics
+    ['Plant offset', m.plantOffsetCm, 'cm'], ['Knee over ball', m.kneeOverBallDeg, '°'],
+    ['Follow-through', m.followThroughDeg, '°'], ['Head movement', m.headMoveCm, 'cm'],
+    // shared
+    ['Trunk lean', m.trunkLeanDeg, '°'],
+  ].filter(x => x[1] !== null && x[1] !== undefined);
+  return `<div style="margin-top:16px">
+    ${r.headline ? `<div class="ans-quick">${esc(r.headline)}</div>` : ''}
+    <div class="az-fixes">${(r.fixes || []).map(f => `
+      <article class="az-fix">
+        <div class="az-fix-rank">${f.rank ?? ''}</div>
+        <div class="az-fix-body">
+          <div class="az-fix-top"><h3>${esc(f.title || '')}</h3></div>
+          ${f.observed ? `<p class="az-fix-obs">${esc(f.observed)}</p>` : ''}
+          ${f.why ? `<p class="az-fix-why">${esc(f.why)}</p>` : ''}
+          ${f.drill ? `<p class="az-fix-drill"><span>Drill</span>${esc(f.drill)}</p>` : ''}
+        </div>
+      </article>`).join('')}</div>
+    ${r.coachNote ? `<p class="az-fix-why" style="margin-top:12px">${esc(r.coachNote)}</p>` : ''}
+    <div class="az-metric-grid" style="margin-top:14px">
+      ${rows.map(([k, v, u]) => `<div class="az-metric"><span class="az-metric-v">${v}<small>${u}</small></span><span class="az-metric-k">${k}</span></div>`).join('')}
+    </div>
+  </div>`;
+}
+
 function planStaticHTML(plan) {
   return `<div style="margin-top:16px">` + (plan.weeks || []).map((w, i) =>
     `<div class="week open"><div class="week-head"><div><div class="week-num">Week <span>${w.week ?? i + 1}</span></div><div class="week-focus">${esc(w.focus || '')}</div></div></div>
@@ -752,6 +790,8 @@ function init() {
   initSettings();
   initCoach();
   initPlans();
+  if (typeof initAnalyze === 'function') initAnalyze();
+  if (typeof initShoot === 'function') initShoot();
   $('#editProfile').addEventListener('click', () => {
     // prefill onboarding from existing profile
     const p = store.get('profile'); if (!p) return;

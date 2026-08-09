@@ -157,6 +157,14 @@
           <svg viewBox="0 0 24 24" class="nav-ic"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
           <span>Coach</span>
         </button>
+        <button class="nav-btn" data-view="analyze">
+          <svg viewBox="0 0 24 24" class="nav-ic"><path d="M3 3v18h18"/><path d="M7 15l3.5-4.5 3 3L21 6"/></svg>
+          <span>Sprint</span>
+        </button>
+        <button class="nav-btn" data-view="shoot">
+          <svg viewBox="0 0 24 24" class="nav-ic"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>
+          <span>Shooting</span>
+        </button>
         <button class="nav-btn" data-view="plans">
           <svg viewBox="0 0 24 24" class="nav-ic"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg>
           <span>Training Plans</span>
@@ -204,6 +212,123 @@
             </button>
           </form>
           <p class="composer-hint">Answers are tuned to your profile. Turn on live web sources in Settings for cited links.</p>
+        </div>
+      </section>
+
+      <!-- ANALYZE VIEW -->
+      <section class="view" data-view="analyze">
+        <div class="view-inner">
+          <header class="view-head">
+            <h1 class="view-title">Sprint Analysis</h1>
+            <p class="view-desc">Film a sprint, upload it, and get your mechanics measured and ranked. Your video is analysed on this device and never uploaded.</p>
+          </header>
+
+          <!-- setup -->
+          <div id="azSetup">
+            <div class="az-step">
+              <div class="az-step-h"><span class="az-num">1</span> Pick the sprint</div>
+              <div id="azTypes" class="az-types"></div>
+            </div>
+
+            <div class="az-step">
+              <div class="az-step-h"><span class="az-num">2</span> Set up the shot</div>
+              <div class="seg az-seg" data-name="capture">
+                <button type="button" class="seg-btn on" data-val="tripod">Tripod / propped phone</button>
+                <button type="button" class="seg-btn" data-val="handheld">Someone filming me</button>
+              </div>
+              <div id="azGuide" class="az-guide glass"></div>
+            </div>
+
+            <div class="az-step">
+              <div class="az-step-h"><span class="az-num">3</span> Upload the clip</div>
+              <label id="azDrop" class="az-drop">
+                <input type="file" id="azFile" accept="video/*" hidden />
+                <svg viewBox="0 0 24 24" class="az-drop-ic"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+                <span class="az-drop-t">Choose a video or drop it here</span>
+                <span class="az-drop-s">MP4 or MOV · up to 12 seconds · analysed on your device</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- working -->
+          <div id="azWorking" class="az-working hidden">
+            <ol class="az-phases" id="azPhases">
+              <li data-phase="0"><span class="az-ph-dot"></span>Reading clip</li>
+              <li data-phase="1"><span class="az-ph-dot"></span>Tracking movement</li>
+              <li data-phase="2"><span class="az-ph-dot"></span>Measuring mechanics</li>
+              <li data-phase="3"><span class="az-ph-dot"></span>Coach reading</li>
+            </ol>
+            <div id="azStatus" class="az-status" role="status" aria-live="polite">Starting…</div>
+            <div class="az-bar"><div id="azBar" class="az-bar-fill"></div></div>
+            <p class="az-priv">Your video stays on this device — only the measurements are sent to the coach.</p>
+            <button id="azCancel" class="btn btn-ghost">Cancel</button>
+          </div>
+
+          <!-- results -->
+          <div id="azResult" class="az-result hidden"></div>
+        </div>
+      </section>
+
+      <!-- SHOOTING VIEW -->
+      <section class="view" data-view="shoot">
+        <div class="view-inner">
+          <header class="view-head">
+            <h1 class="view-title">Shooting Analysis</h1>
+            <p class="view-desc">Film one strike side-on, upload it, and get your plant, contact and follow-through measured frame by frame. Your video is analysed on this device and never uploaded.</p>
+          </header>
+
+          <!-- setup -->
+          <div id="shSetup">
+            <div class="az-step">
+              <div class="az-step-h"><span class="az-num">1</span> Pick the strike</div>
+              <div id="shTypes" class="az-types"></div>
+              <div class="sh-foot">
+                <span class="field-label">Striking foot</span>
+                <div class="seg sh-foot-seg">
+                  <button type="button" class="seg-btn" data-val="L">Left</button>
+                  <button type="button" class="seg-btn" data-val="R">Right</button>
+                </div>
+                <span id="shWeakNote" class="sh-weak hidden">Weak-foot session — you'll be judged on weak-foot standards, not your strong side</span>
+              </div>
+            </div>
+
+            <div class="az-step">
+              <div class="az-step-h"><span class="az-num">2</span> Set up the shot</div>
+              <div class="seg az-seg sh-set-seg">
+                <button type="button" class="seg-btn on" data-val="goal">Full goal</button>
+                <button type="button" class="seg-btn" data-val="wall">Wall / rebounder</button>
+                <button type="button" class="seg-btn" data-val="field">Open field</button>
+              </div>
+              <div id="shGuide" class="az-guide glass"></div>
+            </div>
+
+            <div class="az-step">
+              <div class="az-step-h"><span class="az-num">3</span> Upload the clip</div>
+              <label id="shDrop" class="az-drop">
+                <input type="file" id="shFile" accept="video/*" hidden />
+                <svg viewBox="0 0 24 24" class="az-drop-ic"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+                <span class="az-drop-t">Choose a video or drop it here</span>
+                <span class="az-drop-s">MP4 or MOV · one strike · slo-mo recommended · analysed on your device</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- working -->
+          <div id="shWorking" class="az-working hidden">
+            <ol class="az-phases" id="shPhases">
+              <li data-phase="0"><span class="az-ph-dot"></span>Reading clip</li>
+              <li data-phase="1"><span class="az-ph-dot"></span>Tracking movement</li>
+              <li data-phase="2"><span class="az-ph-dot"></span>Finding the strike</li>
+              <li data-phase="3"><span class="az-ph-dot"></span>Coach reading</li>
+            </ol>
+            <div id="shStatus" class="az-status" role="status" aria-live="polite">Starting…</div>
+            <div class="az-bar"><div id="shBar" class="az-bar-fill"></div></div>
+            <p class="az-priv">Your video stays on this device — only the measurements are sent to the coach.</p>
+            <button id="shCancel" class="btn btn-ghost">Cancel</button>
+          </div>
+
+          <!-- confirm + results -->
+          <div id="shResult" class="az-result hidden"></div>
         </div>
       </section>
 
@@ -315,6 +440,8 @@
 
   <div id="toast" class="toast hidden"></div>
 
+  <script src="analyze.js"></script>
+  <script src="shoot.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

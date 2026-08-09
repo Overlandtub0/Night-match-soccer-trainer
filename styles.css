@@ -309,6 +309,215 @@ body {
 .day-name { font-family: var(--font-display); font-weight: 600; font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--flare); margin-bottom: 4px; }
 .day-detail { color: var(--chalk); font-size: 14.5px; line-height: 1.55; }
 
+/* ============================================================
+   ANALYZE — "instrument panel"
+   The subject is measurement, so the interface borrows from
+   timing gear and contact-mat traces: hairline rules, condensed
+   numerals, a target band you either land in or you don't.
+   Boldness is spent in one place — the gait strip.
+   ============================================================ */
+
+/* ---- setup: a real 3-step sequence, so it earns its numbering ---- */
+.az-step { margin-bottom: 34px; }
+.az-step-h { display: flex; align-items: center; gap: 12px; font-family: var(--font-display); font-size: 20px; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 16px; }
+.az-num { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: var(--flare); color: #fff; font-size: 15px; font-weight: 700; box-shadow: 0 3px 12px rgba(255,77,46,.3); }
+
+.az-types { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.az-type { position: relative; text-align: left; padding: 18px 18px 20px; border-radius: var(--radius); border: 1px solid var(--line-2); background: rgba(255,255,255,.025); color: var(--chalk-dim); cursor: pointer; font-family: var(--font-body); display: flex; flex-direction: column; gap: 6px; transition: border-color .18s var(--ease), background .18s var(--ease), transform .18s var(--ease); overflow: hidden; }
+.az-type::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--flare); transform: scaleY(0); transform-origin: top; transition: transform .22s var(--ease); }
+.az-type:hover { border-color: var(--chalk-mute); transform: translateY(-2px); }
+.az-type.on { border-color: rgba(255,77,46,.5); background: rgba(255,77,46,.06); color: var(--chalk); }
+.az-type.on::after { transform: scaleY(1); }
+.az-type-name { font-family: var(--font-display); font-size: 23px; text-transform: uppercase; letter-spacing: .01em; color: var(--chalk); line-height: 1; }
+.az-type-range { font-family: var(--font-display); font-size: 12.5px; color: var(--flare); text-transform: uppercase; letter-spacing: .14em; }
+.az-type-blurb { font-size: 13.5px; line-height: 1.5; }
+
+.az-seg { margin-bottom: 14px; }
+.az-guide { border-radius: var(--radius); padding: 20px 22px; }
+.az-guide-lead { font-size: 15.5px; margin-bottom: 14px; color: var(--chalk); font-weight: 500; }
+.az-guide-list { margin: 0 0 18px; padding: 0; list-style: none; counter-reset: g; }
+.az-guide-list li { position: relative; padding-left: 30px; margin-bottom: 9px; line-height: 1.55; font-size: 14.5px; color: var(--chalk-dim); }
+.az-guide-list li::before { counter-increment: g; content: counter(g,decimal-leading-zero); position: absolute; left: 0; top: 0; font-family: var(--font-display); font-size: 13px; color: var(--flare); letter-spacing: .06em; }
+.az-guide-tips { border-top: 1px solid var(--line); padding-top: 15px; }
+.az-guide-tips-h { font-family: var(--font-display); text-transform: uppercase; font-size: 14px; letter-spacing: .12em; color: var(--flare); margin-bottom: 9px; }
+.az-guide-tips ul { margin: 0; padding-left: 18px; line-height: 1.6; font-size: 14px; color: var(--chalk-dim); }
+.az-guide-tips li { margin-bottom: 6px; }
+
+.az-drop { display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 44px 20px; border: 1.5px dashed var(--line-2); border-radius: var(--radius-lg); cursor: pointer; transition: all .18s var(--ease); text-align: center; }
+.az-drop:hover, .az-drop.over { border-color: var(--flare); background: rgba(255,77,46,.05); }
+.az-drop.over { transform: scale(1.005); }
+.az-drop-ic { width: 34px; height: 34px; fill: none; stroke: var(--flare); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.az-drop-t { font-family: var(--font-display); font-size: 21px; text-transform: uppercase; letter-spacing: .05em; color: var(--chalk); }
+.az-drop-s { font-size: 13px; color: var(--chalk-mute); }
+.az-drop:focus-within { outline: 2px solid var(--flare); outline-offset: 3px; }
+
+/* ---- working: named phases, not a mystery spinner ---- */
+.az-working { padding: 46px 20px 40px; max-width: 460px; margin: 0 auto; text-align: center; }
+.az-phases { list-style: none; display: flex; flex-direction: column; gap: 2px; text-align: left; margin-bottom: 24px; }
+.az-phases li { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 9px; font-size: 14.5px; color: var(--chalk-mute); transition: all .3s var(--ease); }
+.az-phases li.on { color: var(--chalk); background: rgba(255,255,255,.05); }
+.az-phases li.done { color: var(--chalk-dim); }
+.az-ph-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--chalk-mute); flex-shrink: 0; transition: all .3s var(--ease); }
+.az-phases li.on .az-ph-dot { background: var(--flare); box-shadow: 0 0 0 4px rgba(255,77,46,.18); animation: pulse 1.6s ease-in-out infinite; }
+.az-phases li.done .az-ph-dot { background: #57d99a; }
+.az-status { font-size: 14.5px; color: var(--chalk-dim); margin-bottom: 12px; }
+.az-bar { height: 3px; background: rgba(255,255,255,.09); border-radius: 3px; overflow: hidden; margin-bottom: 18px; }
+.az-bar-fill { height: 100%; width: 0; background: var(--grad-flare); transition: width .4s var(--ease); }
+.az-priv { font-size: 12.5px; color: var(--chalk-mute); line-height: 1.5; margin-bottom: 18px; }
+
+/* ---- blocked ---- */
+.az-blocked { border: 1px solid rgba(255,122,107,.3); background: rgba(255,122,107,.045); border-radius: var(--radius-lg); padding: 26px; }
+.az-blocked-h { font-family: var(--font-display); font-size: 23px; text-transform: uppercase; letter-spacing: .02em; margin-bottom: 8px; }
+.az-blocked-sub { color: var(--chalk-dim); font-size: 14.5px; line-height: 1.55; margin-bottom: 18px; }
+.az-issues { list-style: none; margin-bottom: 22px; }
+.az-issues li { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.az-issues li:last-child { border: none; }
+.az-issues b { display: block; font-family: var(--font-display); font-size: 17px; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
+.az-issues span { color: var(--chalk-dim); font-size: 14.5px; line-height: 1.55; }
+
+/* ---- report shell ---- */
+.az-headline { margin-bottom: 22px; }
+.az-tag { display: inline-block; font-family: var(--font-display); font-size: 12.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--flare); border: 1px solid rgba(255,77,46,.3); border-radius: 999px; padding: 5px 13px; margin-bottom: 12px; }
+.az-headline h2 { font-family: var(--font-display); font-size: 38px; text-transform: uppercase; line-height: .98; letter-spacing: .005em; }
+
+.az-cols { display: grid; grid-template-columns: minmax(0,1fr) 330px; gap: 30px; align-items: start; }
+.az-col-side { display: flex; flex-direction: column; gap: 24px; }
+
+.az-sec-h { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-size: 15px; letter-spacing: .13em; text-transform: uppercase; color: var(--flare); font-weight: 600; margin-bottom: 14px; }
+.az-sec-h svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.az-sec-h em { margin-left: auto; font-style: normal; font-size: 11.5px; letter-spacing: .1em; color: var(--chalk-mute); }
+.az-sec-h--good { color: #57d99a; }
+
+/* ---- SIGNATURE: the gait strip ---- */
+.az-gait { margin: 0 0 30px; padding: 18px 20px 14px; border: 1px solid var(--line-2); border-radius: var(--radius); background:
+  linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.01)); }
+.az-gait-cap { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
+.az-gait-t { font-family: var(--font-display); font-size: 14px; text-transform: uppercase; letter-spacing: .14em; color: var(--chalk-dim); }
+.az-gait-legend { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--chalk-mute); }
+.az-gait-legend i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-left: 8px; }
+.az-gait-legend i.l { background: var(--flare); }
+.az-gait-legend i.r { background: #7fd2ff; }
+.az-gait-cad { margin-left: auto; font-family: var(--font-display); font-size: 30px; color: var(--chalk); line-height: 1; }
+.az-gait-cad small { font-size: 12px; color: var(--chalk-mute); margin-left: 5px; letter-spacing: .06em; text-transform: uppercase; }
+/* plotted in HTML so labels never distort with the container */
+.az-gait-plot { position: relative; height: 112px; margin: 4px 0 2px; }
+.az-gait-axis { position: absolute; left: 0; right: 0; top: 50%; height: 0; border-top: 1px dashed rgba(236,239,233,.18); }
+.az-tick { position: absolute; top: 50%; width: 0; opacity: 0; animation: tickIn .4s var(--ease) forwards; animation-delay: var(--d); }
+.az-tick i { position: absolute; left: -1px; width: 2px; display: block; border-radius: 2px; }
+.az-tick i::after { content: ""; position: absolute; left: 50%; width: 9px; height: 9px; border-radius: 50%; transform: translateX(-50%); }
+.az-tick--l i { bottom: 0; height: 40px; background: var(--flare); }
+.az-tick--l i::after { top: -4px; background: var(--flare); }
+.az-tick--r i { top: 0; height: 40px; background: #7fd2ff; }
+.az-tick--r i::after { bottom: -4px; background: #7fd2ff; }
+.az-gap { position: absolute; transform: translateX(-50%); font-family: var(--font-display); font-size: 12px; color: var(--chalk-mute); letter-spacing: .04em; white-space: nowrap; }
+.az-gap--l { top: calc(50% - 20px); }
+.az-gap--r { top: calc(50% + 6px); }
+@keyframes tickIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.az-gait-scale { display: flex; justify-content: space-between; font-family: var(--font-display); font-size: 12px; color: var(--chalk-mute); letter-spacing: .08em; }
+
+/* ---- ranked fixes: the ranking is real, so the numerals lead ---- */
+.az-fixes { margin-bottom: 22px; }
+.az-fix { display: flex; gap: 16px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.az-fix:last-child { border: none; padding-bottom: 4px; }
+.az-fix-rank { font-family: var(--font-display); font-size: 34px; font-weight: 700; color: rgba(255,77,46,.55); line-height: .9; width: 38px; flex-shrink: 0; letter-spacing: -.02em; }
+.az-fix-body { flex: 1; min-width: 0; }
+.az-fix-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.az-fix-top h3 { font-family: var(--font-display); font-size: 23px; text-transform: uppercase; letter-spacing: .02em; line-height: 1.05; }
+.az-impact { font-family: var(--font-display); font-size: 11.5px; text-transform: uppercase; letter-spacing: .12em; padding: 3px 9px; border-radius: 5px; font-weight: 600; }
+.az-impact--hi { background: rgba(255,77,46,.16); color: var(--flare); }
+.az-impact--md { background: rgba(255,255,255,.07); color: var(--chalk-dim); }
+.az-impact--lo { background: rgba(255,255,255,.045); color: var(--chalk-mute); }
+.az-fix-obs { font-size: 14px; color: var(--flare); margin-bottom: 7px; line-height: 1.5; }
+.az-fix-why { font-size: 15.5px; color: var(--chalk-dim); line-height: 1.6; margin-bottom: 10px; }
+.az-fix-drill { font-size: 14.5px; line-height: 1.6; background: rgba(255,255,255,.04); border-left: 2px solid rgba(255,77,46,.4); border-radius: 0 9px 9px 0; padding: 11px 14px; }
+.az-fix-drill span { font-family: var(--font-display); text-transform: uppercase; font-size: 12px; letter-spacing: .14em; color: var(--flare); margin-right: 9px; }
+
+/* ---- strengths ---- */
+.az-str-list { list-style: none; }
+.az-str-list li { position: relative; padding-left: 22px; margin-bottom: 9px; font-size: 14.5px; line-height: 1.5; color: var(--chalk-dim); }
+.az-str-list li::before { content: ""; position: absolute; left: 3px; top: 7px; width: 7px; height: 7px; background: #57d99a; transform: rotate(45deg); }
+
+/* ---- range gauges: a number becomes a judgement ---- */
+.az-gauge { margin-bottom: 16px; }
+.az-gauge-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.az-gauge-k { font-size: 13px; color: var(--chalk-dim); }
+.az-gauge-v { font-family: var(--font-display); font-size: 19px; color: var(--chalk); }
+.az-gauge-v small { font-size: 11.5px; color: var(--chalk-mute); margin-left: 2px; }
+.az-gauge-track { position: relative; height: 6px; border-radius: 4px; background: rgba(255,255,255,.07); overflow: visible; }
+.az-gauge-band { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: rgba(87,217,154,.3); }
+.az-gauge-mark { position: absolute; top: 50%; width: 3px; height: 15px; border-radius: 2px; background: var(--chalk); transform: translate(-50%,-50%); box-shadow: 0 0 0 2px var(--pitch-900); }
+.az-gauge--in .az-gauge-mark { background: #57d99a; }
+.az-gauge--low .az-gauge-mark, .az-gauge--high .az-gauge-mark { background: var(--flare); }
+.az-gauge-foot { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-top: 6px; }
+.az-gauge-status { font-family: var(--font-display); font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; flex-shrink: 0; }
+.az-gauge--in .az-gauge-status { color: #57d99a; }
+.az-gauge--low .az-gauge-status, .az-gauge--high .az-gauge-status { color: var(--flare); }
+.az-gauge-hint { font-size: 11px; color: var(--chalk-mute); margin-left: auto; text-align: right; line-height: 1.35; }
+
+/* ---- estimated block, visibly softer than measured ---- */
+.az-est-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px,1fr)); gap: 9px; }
+.az-est-item { border: 1px dashed var(--line-2); border-radius: 9px; padding: 11px 10px; }
+.az-est-v { display: block; font-family: var(--font-display); font-size: 22px; color: var(--chalk-dim); line-height: 1; }
+.az-est-v small { font-size: 11px; color: var(--chalk-mute); margin-left: 2px; }
+.az-est-k { display: block; font-size: 11px; color: var(--chalk-mute); margin-top: 5px; text-transform: uppercase; letter-spacing: .06em; }
+
+/* ---- media ---- */
+.az-video-wrap { position: relative; border-radius: var(--radius); overflow: hidden; background: #000; border: 1px solid var(--line); }
+.az-video { width: 100%; display: block; }
+.az-skeleton { position: absolute; inset: 0; pointer-events: none; }
+.az-toggle { display: flex; align-items: center; gap: 10px; margin-top: 11px; font-size: 13.5px; color: var(--chalk-dim); cursor: pointer; }
+.az-note { font-size: 12px; color: var(--chalk-mute); line-height: 1.55; }
+
+@media (max-width: 900px) {
+  .az-cols { grid-template-columns: 1fr; gap: 26px; }
+  .az-headline h2 { font-size: 30px; }
+  .az-fix-rank { font-size: 26px; width: 30px; }
+}
+@media (max-width: 560px) {
+  .az-gait-cap { flex-wrap: wrap; gap: 8px 12px; }
+  .az-gait-cad { font-size: 26px; }
+  .az-gait-plot { height: 96px; }
+  .az-tick--l i, .az-tick--r i { height: 32px; }
+  .az-gap { display: none; }          /* too tight to read — cadence readout carries it */
+}
+
+/* ---------- Shooting (reuses the az- instrument panel) ---------- */
+/* striking foot + weak-foot flag */
+.sh-foot { margin-top: 16px; display: flex; flex-direction: column; gap: 9px; max-width: 340px; }
+.sh-weak { font-size: 12.5px; line-height: 1.45; color: var(--flare); background: rgba(255,77,46,.07); border: 1px solid rgba(255,77,46,.24); border-radius: 9px; padding: 8px 12px; }
+
+/* slo-mo callout inside the guide */
+.sh-slomo { display: flex; gap: 12px; align-items: flex-start; border-top: 1px solid var(--line); padding-top: 15px; font-size: 13.5px; line-height: 1.55; color: var(--chalk-dim); }
+.sh-slomo-tag { flex-shrink: 0; font-family: var(--font-display); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--flare); border: 1px solid rgba(255,77,46,.3); border-radius: 6px; padding: 3px 9px; margin-top: 1px; }
+
+/* SIGNATURE: the strike sequence — plant / contact / follow-through */
+.sh-seq { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 26px; }
+.sh-still { margin: 0; border: 1px solid var(--line-2); border-radius: var(--radius); overflow: hidden; background: #000; }
+.sh-still img { display: block; width: 100%; }
+.sh-still figcaption { display: flex; flex-direction: column; gap: 3px; padding: 10px 13px 12px; background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.01)); }
+.sh-still-tag { font-family: var(--font-display); font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--flare); }
+.sh-still:nth-child(2) { border-color: rgba(255,77,46,.45); }   /* contact is the frame that matters */
+.sh-still-cap { font-size: 13px; color: var(--chalk-dim); }
+.sh-approx-note { margin: -14px 0 22px; }
+
+/* contact confirm */
+.sh-confirm { border-radius: var(--radius-lg); padding: 26px; max-width: 640px; margin: 0 auto; text-align: center; }
+.sh-confirm .az-sec-h { justify-content: center; }
+.sh-confirm-sub { color: var(--chalk-dim); font-size: 14.5px; line-height: 1.55; margin-bottom: 18px; max-width: 460px; margin-left: auto; margin-right: auto; }
+.sh-confirm-frame { border: 1px solid rgba(255,77,46,.4); border-radius: var(--radius); overflow: hidden; background: #000; margin-bottom: 16px; }
+.sh-confirm-frame img { display: block; width: 100%; }
+.sh-scrub { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+.sh-scrub-l { font-family: var(--font-display); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--chalk-mute); flex-shrink: 0; }
+.sh-scrub input[type=range] { flex: 1; -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px; background: rgba(255,255,255,.1); }
+.sh-scrub input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--grad-flare); box-shadow: var(--glow-flare); cursor: pointer; }
+.sh-scrub input[type=range]:focus-visible { outline: 2px solid var(--flare); outline-offset: 3px; }
+.sh-scrub-info { font-family: var(--font-display); font-size: 14px; letter-spacing: .06em; text-transform: uppercase; color: var(--chalk-dim); margin-bottom: 18px; }
+
+@media (max-width: 700px) {
+  .sh-seq { grid-template-columns: 1fr; }
+  .sh-confirm { padding: 20px 16px; }
+}
+
 /* ---------- Saved ---------- */
 .saved-list { display: flex; flex-direction: column; gap: 12px; }
 .saved-item { border-radius: var(--radius); padding: 18px 20px; border: 1px solid var(--line); background: rgba(255,255,255,.02); cursor: pointer; transition: all .16s var(--ease); }
