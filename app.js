@@ -43,8 +43,20 @@ async function checkBackend() {
   } catch { /* no backend (local/static) */ }
   refreshKeyStatus();
 }
-// true when the coach can run: either the visitor set their own key, or a shared key is live.
-function canCoach() { return !!store.get('apiKey') || (backendReady && backendKey); }
+// Which key the coach should use right now.
+//  'own'    → the visitor's personal key (their quota)
+//  'shared' → the key I provide on the server (no setup for the visitor)
+//  'none'   → nothing available yet
+function keyMode() {
+  const ownKey = store.get('apiKey');
+  const wantOwn = store.get('useOwnKey', false);
+  const sharedLive = backendReady && backendKey;
+  if (wantOwn && ownKey) return 'own';       // explicitly chose their own key
+  if (sharedLive) return 'shared';           // default: the provided shared key
+  if (ownKey) return 'own';                  // no shared backend (e.g. local) → fall back to their key
+  return 'none';
+}
+function canCoach() { return keyMode() !== 'none'; }
 
 /* ---------------- Toast ---------------- */
 let toastTimer;
@@ -174,6 +186,7 @@ function switchView(view) {
   $$('.view').forEach(v => v.classList.toggle('active', v.dataset.view === view));
   if (view === 'saved') renderSaved();
   if (view === 'profile') renderProfile();
+  if (view === 'plans') renderPlansList();
 }
 
 /* =====================================================================
@@ -185,27 +198,45 @@ function initSettings() {
   $('#settingsModal').addEventListener('click', e => { if (e.target.id === 'settingsModal') e.target.classList.add('hidden'); });
   $('#saveKey').addEventListener('click', saveKey);
   $('#testKey').addEventListener('click', testKey);
+  $('#useOwnToggle').addEventListener('change', () => {
+    store.set('useOwnKey', $('#useOwnToggle').checked);   // the toggle is live
+    applyKeySourceUI();
+    refreshKeyStatus();
+    if (keyMode() !== 'none') loadModels().catch(() => {});
+  });
   refreshKeyStatus();
 }
 const DEFAULT_MODEL = 'gemini-flash-latest';
 
+function applyKeySourceUI() {
+  const on = $('#useOwnToggle').checked;
+  $('#ownKeyBlock').classList.toggle('hidden', !on);
+  const sub = $('#useOwnSub');
+  if (sub) sub.textContent = on
+    ? 'On: the coach uses your own Google Gemini key and quota.'
+    : (backendReady && backendKey
+        ? 'Off: using the shared key provided with this site — no setup needed.'
+        : 'No shared key is set up here, so switch this on and add your own key.');
+}
+
 function openSettings() {
+  $('#useOwnToggle').checked = store.get('useOwnKey', false);
   $('#apiKeyInput').value = store.get('apiKey', '') || '';
   $('#groundingToggle').checked = store.get('grounding', false);
   $('#keyMsg').textContent = '';
-  const sharedNote = $('#sharedNote');
-  if (sharedNote) sharedNote.classList.toggle('hidden', !(backendReady && backendKey));
+  applyKeySourceUI();
   $('#settingsModal').classList.remove('hidden');
-  if (store.get('apiKey') || (backendReady && backendKey)) loadModels().catch(() => {});
+  if (keyMode() !== 'none') loadModels().catch(() => {});
   else $('#modelSelect').value = store.get('model', DEFAULT_MODEL);
 }
 function saveKey() {
-  const key = $('#apiKeyInput').value.trim();
-  store.set('apiKey', key);
+  store.set('useOwnKey', $('#useOwnToggle').checked);
+  store.set('apiKey', $('#apiKeyInput').value.trim());
   store.set('model', $('#modelSelect').value || DEFAULT_MODEL);
   store.set('grounding', $('#groundingToggle').checked);
   refreshKeyStatus();
-  toast(key ? 'Settings saved' : 'API key cleared');
+  const m = keyMode();
+  toast(m === 'own' ? 'Using your own key' : m === 'shared' ? 'Using the shared key' : 'Add a key to start');
   $('#settingsModal').classList.add('hidden');
 }
 async function testKey() {
@@ -214,8 +245,8 @@ async function testKey() {
   if (!key) { msg.className = 'key-msg err'; msg.textContent = 'Paste a key first.'; return; }
   msg.className = 'key-msg'; msg.textContent = 'Checking your key and available models…';
   try {
-    store.set('apiKey', key);
-    // Listing models validates the key without spending a generation request (saves quota).
+    // validate the entered key directly against Google (listing models spends no generation quota)
+    store.set('apiKey', key); store.set('useOwnKey', true); $('#useOwnToggle').checked = true;
     await loadModels();
     store.set('model', $('#modelSelect').value);
     msg.className = 'key-msg ok'; msg.textContent = '✓ Key works — using ' + $('#modelSelect').value;
@@ -228,11 +259,11 @@ async function testKey() {
 /* Ask the key which models it can use, and fill the dropdown. Keeps us
    compatible with any account — no hardcoded model that might be unavailable. */
 async function loadModels() {
-  const ownKey = store.get('apiKey');
+  const mode = keyMode();
   let res;
-  if (ownKey) res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(ownKey)}&pageSize=200`);
+  if (mode === 'own') res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(store.get('apiKey'))}&pageSize=200`);
   else if (backendReady) res = await fetch('/api/models');
-  else throw new Error('Add your API key first, or deploy the shared backend.');
+  else throw new Error('Turn on your own API key first, or the shared backend isn’t available.');
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error?.message || 'Could not list models.');
 
@@ -269,13 +300,14 @@ async function loadModels() {
 /* On boot: if a key exists but the stored model is stale/unavailable,
    silently swap to a valid one so the coach just works. */
 async function reconcileModel() {
-  if (!store.get('apiKey') && !(backendReady && backendKey)) return;
+  if (keyMode() === 'none') return;
   try { await loadModels(); } catch { /* offline / bad key — surfaced when they ask */ }
 }
 function refreshKeyStatus() {
+  const mode = keyMode();
   let dot = 'off', text = 'No API key';
-  if (store.get('apiKey')) { dot = 'on'; text = 'Using your key'; }
-  else if (backendReady && backendKey) { dot = 'on'; text = 'Coach ready'; }
+  if (mode === 'own') { dot = 'on'; text = 'Using your key'; }
+  else if (mode === 'shared') { dot = 'on'; text = 'Coach ready'; }
   else if (backendReady && !backendKey) { dot = 'off'; text = 'Server key not set'; }
   const el = $('#keyStatus');
   if (el) el.innerHTML = `<span class="dot dot--${dot}"></span><span class="key-status-text">${text}</span>`;
@@ -299,9 +331,10 @@ function parseRetryDelay(data) {
 }
 
 async function callGemini(systemInstruction, userText, useGrounding = true, jsonMode = false, _retry = false) {
-  const ownKey = store.get('apiKey');
-  if (!ownKey && !(backendReady && backendKey))
-    throw new Error('No coach access yet — add your API key in Settings (or set the shared key on the server).');
+  const mode = keyMode();
+  if (mode === 'none')
+    throw new Error('No coach access yet — turn on your own API key in Settings, or the shared key isn’t configured.');
+  const ownKey = mode === 'own' ? store.get('apiKey') : null;
   const model = store.get('model', DEFAULT_MODEL);
 
   const payload = {
@@ -542,6 +575,16 @@ function scrollChat() { const s = $('#chatScroll'); s.scrollTop = s.scrollHeight
    TRAINING PLANS
    ===================================================================== */
 function initPlans() {
+  // one delegated handler covers every plan card: expand/collapse + remove
+  $('#planResult').addEventListener('click', e => {
+    const del = e.target.closest('[data-plan-del]');
+    if (del) { e.stopPropagation(); removePlan(del.dataset.planDel); return; }
+    const weekHead = e.target.closest('.week-head');
+    if (weekHead) { e.stopPropagation(); weekHead.parentElement.classList.toggle('open'); return; }
+    const head = e.target.closest('.plan-card-head');
+    if (head) head.closest('.plan-card-wrap').classList.toggle('open');
+  });
+
   $('#planForm').addEventListener('submit', async e => {
     e.preventDefault();
     if (!canCoach()) { openSettings(); toast('Add your free API key first', false); return; }
@@ -570,8 +613,10 @@ Make exactly ${weeks} weeks and ${days} training days per week. Progress difficu
     try {
       const { text } = await callGemini(sys, `Goal: ${goal}. ${weeks} weeks, ${days} days/week.`, false, true);
       const plan = JSON.parse(cleanJSON(text));
-      renderPlan(plan, goal);
-      toast('Plan ready');
+      const saved = savePlan(plan, goal, weeks, days);   // auto-saved to the user, no extra click
+      renderPlansList(saved.id);
+      f.goal.value = '';
+      toast('Plan saved to your plans');
     } catch (err) {
       $('#planResult').innerHTML = `<div class="ans-quick" style="border-color:rgba(255,122,107,.4)">${WARN}${esc(err.message)}</div>`;
     } finally {
@@ -579,9 +624,37 @@ Make exactly ${weeks} weeks and ${days} training days per week. Progress difficu
       btn.textContent = orig; btn.disabled = false;
     }
   });
+
+  renderPlansList();
 }
 
-function renderPlan(plan, goal) {
+/* persistent plans store — every generated plan is kept for the user */
+function savePlan(plan, goal, weeks, days) {
+  const plans = store.get('plans', []);
+  const rec = { id: uid(), ts: Date.now(), goal, weeks, days, plan };
+  plans.unshift(rec);
+  store.set('plans', plans);
+  return rec;
+}
+function removePlan(id) {
+  store.set('plans', store.get('plans', []).filter(p => p.id !== id));
+  renderPlansList();
+  toast('Plan removed');
+}
+
+function renderPlansList(expandId) {
+  const plans = store.get('plans', []);
+  const el = $('#planResult'); if (!el) return;
+  if (!plans.length) {
+    el.innerHTML = `<p class="plan-empty">No plans yet. Build one above — it's saved here automatically so you can come back to it anytime.</p>`;
+    return;
+  }
+  const openId = expandId ?? plans[0].id;
+  el.innerHTML = `<div class="plan-list-h">Your plans</div>` + plans.map(p => planCardHTML(p, p.id === openId)).join('');
+}
+
+function planCardHTML(p, open) {
+  const plan = p.plan || {};
   const weeksHTML = (plan.weeks || []).map((w, i) => `
     <div class="week ${i === 0 ? 'open' : ''}">
       <div class="week-head">
@@ -593,23 +666,22 @@ function renderPlan(plan, goal) {
       </div>
     </div>`).join('');
 
-  $('#planResult').innerHTML = `
-    <div class="plan-overview">
-      <h2>${esc(plan.title || goal)}</h2>
-      <p>${esc(plan.overview || '')}</p>
-      <div class="ans-actions"><button class="icon-btn save-plan"><svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>Save plan</button></div>
+  return `<article class="plan-card-wrap ${open ? 'open' : ''}" data-id="${p.id}">
+    <div class="plan-card-head">
+      <div class="plan-card-t">
+        <h2>${esc(plan.title || p.goal)}</h2>
+        <div class="plan-meta">${esc(p.weeks)} weeks · ${esc(p.days)} days/week · saved ${timeAgo(p.ts)}</div>
+      </div>
+      <div class="plan-card-actions">
+        <button class="plan-del" data-plan-del="${p.id}" aria-label="Remove plan" title="Remove plan">&times;</button>
+        <svg class="plan-card-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
     </div>
-    ${weeksHTML}`;
-
-  $$('#planResult .week-head').forEach(h => h.addEventListener('click', () => h.parentElement.classList.toggle('open')));
-  $('#planResult .save-plan').addEventListener('click', e => {
-    const saved = store.get('saved', []);
-    saved.unshift({ id: uid(), ts: Date.now(), type: 'plan', question: plan.title || goal, plan });
-    store.set('saved', saved);
-    e.currentTarget.classList.add('saved');
-    e.currentTarget.innerHTML = `<svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>Saved`;
-    toast('Plan saved');
-  });
+    <div class="plan-card-body">
+      ${plan.overview ? `<p class="plan-card-ov">${esc(plan.overview)}</p>` : ''}
+      <div class="plan-weeks">${weeksHTML}</div>
+    </div>
+  </article>`;
 }
 
 /* =====================================================================

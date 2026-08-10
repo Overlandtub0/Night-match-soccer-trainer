@@ -426,14 +426,33 @@
     <div class="modal glass">
       <button class="modal-x" data-close="settings">&times;</button>
       <h2 class="modal-title">Settings</h2>
-      <p class="modal-desc">A Google Gemini API key powers the coach. Any key you enter is stored <b>only on this device</b> and sent directly to Google — never anywhere else.</p>
+      <p class="modal-desc">The coach runs on Google Gemini. By default it uses the <b>shared key provided with Night Match</b> — nothing to set up. You can switch to your own key and quota below.</p>
 
-      <div id="sharedNote" class="shared-note hidden">This site already has a shared key set up, so you can just use the coach. Add your own key below only if you'd rather run on your own quota.</div>
-
-      <label class="field">
-        <span class="field-label">Your own API key (optional)</span>
-        <input type="password" id="apiKeyInput" placeholder="Paste your key (AIza…)" autocomplete="off" />
+      <label class="toggle-row" for="useOwnToggle">
+        <span>
+          <span class="toggle-title">Use my own API key</span>
+          <span class="toggle-sub" id="useOwnSub">Off: use the shared key provided with this site. On: use your own Google Gemini key and quota.</span>
+        </span>
+        <input type="checkbox" id="useOwnToggle" class="switch" />
       </label>
+
+      <div id="ownKeyBlock" class="own-key-block hidden">
+        <label class="field">
+          <span class="field-label">Your Google Gemini API key</span>
+          <input type="password" id="apiKeyInput" placeholder="Paste your key (AIza…)" autocomplete="off" />
+        </label>
+        <div class="modal-actions"><button id="testKey" class="btn btn-ghost">Test key</button></div>
+        <div id="keyMsg" class="key-msg"></div>
+        <details class="help">
+          <summary>How do I get a free key?</summary>
+          <ol>
+            <li>Go to <b>aistudio.google.com</b> and sign in with any Google account.</li>
+            <li>Click <b>“Get API key”</b> → <b>“Create API key”</b>.</li>
+            <li>Copy it and paste above. It's free — no credit card needed.</li>
+          </ol>
+        </details>
+      </div>
+
       <label class="field">
         <span class="field-label">Model</span>
         <select id="modelSelect">
@@ -442,7 +461,6 @@
           <option value="gemini-flash-lite-latest">gemini-flash-lite-latest — lightest</option>
           <option value="gemini-pro-latest">gemini-pro-latest — deeper, slower</option>
         </select>
-        <p class="field-hint">The list fills in automatically from your key after you test it.</p>
       </label>
 
       <label class="toggle-row" for="groundingToggle">
@@ -454,19 +472,8 @@
       </label>
 
       <div class="modal-actions">
-        <button id="testKey" class="btn btn-ghost">Test key</button>
-        <button id="saveKey" class="btn btn-accent">Save</button>
+        <button id="saveKey" class="btn btn-accent btn-block">Save</button>
       </div>
-      <div id="keyMsg" class="key-msg"></div>
-
-      <details class="help">
-        <summary>How do I get a free key?</summary>
-        <ol>
-          <li>Go to <b>aistudio.google.com</b> and sign in with any Google account.</li>
-          <li>Click <b>“Get API key”</b> → <b>“Create API key”</b>.</li>
-          <li>Copy it and paste above. It's free — no credit card needed.</li>
-        </ol>
-      </details>
     </div>
   </div>
 
