@@ -306,7 +306,7 @@
         <div class="view-inner">
           <header class="view-head">
             <h1 class="view-title">Shooting Analysis</h1>
-            <p class="view-desc">Film one strike side-on, upload it, and get your plant, contact and follow-through measured frame by frame. Your video is analysed on this device and never uploaded.</p>
+            <p class="view-desc">Film one strike in slo-mo — side profile or directly behind — and get your plant, contact and follow-through measured frame by frame. Works for every shot type. Your video is analysed on this device and never uploaded.</p>
           </header>
 
           <!-- setup -->
@@ -326,6 +326,11 @@
 
             <div class="az-step">
               <div class="az-step-h"><span class="az-num">2</span> Set up the shot</div>
+              <div class="seg sh-view-seg">
+                <button type="button" class="seg-btn on" data-view="side">Side profile</button>
+                <button type="button" class="seg-btn" data-view="behind">Directly behind</button>
+              </div>
+              <p id="shViewRec" class="sh-view-rec"></p>
               <div class="seg az-seg sh-set-seg">
                 <button type="button" class="seg-btn on" data-val="goal">Full goal</button>
                 <button type="button" class="seg-btn" data-val="wall">Wall / rebounder</button>

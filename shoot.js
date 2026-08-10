@@ -7,97 +7,188 @@
    Depends on analyze.js (pose model, geometry, gauges).
    ============================================================ */
 
-/* ---------------- shot types ---------------- */
-/* gauges: [key, label, unit, targetBand, scale, hint] — bands differ per
-   shot type because a side-foot finish SHOULD swing shorter than a drive. */
+/* ---------------- shot types ----------------
+   gauges: [key, label, unit, targetBand, scale, hint]. `view` is the camera
+   angle that reads the shot best (side profile vs directly behind). Bands
+   differ per shot: a side-foot finish should swing shorter than a drive; a
+   chip is meant to lean back; a curl wants an angled approach and wrap. */
+
+// shared metrics for the directly-behind (frontal-plane) view. Approximate
+// from a single 2D view, but the right angle for hip rotation & approach path.
+const BEHIND_GAUGES = [
+  ['hipRotationDeg', 'Hip rotation', '°', [20, 70], [0, 110], 'Open the hips through the ball'],
+  ['chestSquareDeg', 'Chest tilt', '°', [0, 16], [0, 45], 'Chest over the ball, not thrown back'],
+  ['plantLateralCm', 'Plant beside ball', 'cm', [6, 28], [-10, 55], 'Plant to the side of the ball, not on top'],
+  ['approachAngleDeg', 'Approach angle', '°', [0, 45], [0, 70], 'Angled run helps you wrap the ball'],
+  ['followSwingDeg', 'Follow direction', '°', [8, 60], [0, 100], 'Across the ball for curl, straight for power'],
+  ['headMoveCm', 'Head movement', 'cm', [0, 14], [0, 30], 'Still head, clean strike'],
+];
+
+function sideGauges(over = {}) {
+  const g = {
+    plantOffsetCm: ['Plant offset', 'cm', [0, 20], [-15, 50], 'Level with the ball, not behind it'],
+    kneeOverBallDeg: ['Knee over ball', '°', [5, 25], [-15, 45], 'Knee ahead of ankle keeps it down'],
+    kneeExtensionDeg: ['Knee extension', '°', [120, 175], [80, 190], 'Snap the knee straight through impact'],
+    trunkLeanDeg: ['Trunk lean', '°', [5, 25], [-20, 45], 'Chest over the ball, not leaning back'],
+    backswingFlexDeg: ['Backswing knee bend', '°', [80, 120], [30, 150], 'Your power reservoir'],
+    followThroughDeg: ['Follow-through', '°', [55, 90], [10, 110], 'Swing through, not at'],
+    followHeightCm: ['Follow-through height', 'cm', [30, 90], [0, 140], 'Height the boot finishes at'],
+    anklePointDeg: ['Ankle pointed', '°', [150, 185], [100, 200], '180° = foot in line with the shin'],
+    ankleStabilityDeg: ['Ankle wobble', '°', [0, 8], [0, 25], 'Lower means locked'],
+    headMoveCm: ['Head movement', 'cm', [0, 12], [0, 30], 'Still head, clean strike'],
+    armBalanceDeg: ['Balance arm', '°', [15, 60], [0, 90], 'Opposite arm out to counter-balance'],
+  };
+  Object.assign(g, over);
+  return Object.entries(g).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, ...v]);
+}
+
 const SHOT_TYPES = {
   instep: {
-    id: 'instep',
-    name: 'Instep drive',
-    range: 'Laces · power',
+    id: 'instep', name: 'Instep drive', range: 'Laces · power', view: 'side',
     blurb: 'The power strike — laces through the ball, hips driving, full follow-through.',
-    focus: [
-      'Plant foot level with the ball, not behind it',
-      'Knee over the ball at contact to keep it down',
-      'Ankle locked and pointed through the strike',
-      'Full, high follow-through — swing through the ball, not at it',
-    ],
-    gauges: [
-      ['plantOffsetCm', 'Plant offset', 'cm', [0, 20], [-15, 50], 'Level with the ball, not behind it'],
-      ['kneeOverBallDeg', 'Knee over ball', '°', [5, 25], [-15, 45], 'Knee ahead of ankle keeps it down'],
-      ['trunkLeanDeg', 'Trunk lean', '°', [5, 25], [-20, 45], 'Chest over the ball, not leaning back'],
-      ['backswingFlexDeg', 'Backswing knee bend', '°', [80, 120], [30, 150], 'Your power reservoir'],
-      ['followThroughDeg', 'Follow-through', '°', [55, 90], [10, 110], 'Swing through, not at'],
-      ['anklePointDeg', 'Ankle pointed', '°', [150, 185], [100, 200], '180° = foot in line with the shin'],
-      ['ankleStabilityDeg', 'Ankle wobble', '°', [0, 8], [0, 25], 'Lower means locked'],
-      ['headMoveCm', 'Head movement', 'cm', [0, 12], [0, 30], 'Still head, clean strike'],
-      ['armBalanceDeg', 'Balance arm', '°', [15, 60], [0, 90], 'Opposite arm out to counter-balance'],
-    ],
+    focus: ['Plant foot level with the ball', 'Knee over the ball to keep it down', 'Ankle locked and pointed', 'Full, high follow-through'],
+    gauges: sideGauges(), gaugesBehind: BEHIND_GAUGES,
   },
   sidefoot: {
-    id: 'sidefoot',
-    name: 'Side-foot finish',
-    range: 'Placement · accuracy',
+    id: 'sidefoot', name: 'Side-foot finish', range: 'Placement · accuracy', view: 'side',
     blurb: 'The accuracy finish — firm ankle, body over the ball, controlled swing to the corner.',
-    focus: [
-      'Plant foot level with the ball',
-      'Body compact and over the ball',
-      'Firm, stable ankle guiding the ball',
-      'Short, controlled follow-through toward target',
-    ],
-    gauges: [
-      ['plantOffsetCm', 'Plant offset', 'cm', [0, 25], [-15, 50], 'Level with the ball, not behind it'],
-      ['kneeOverBallDeg', 'Knee over ball', '°', [0, 20], [-15, 45], 'Stay compact over the strike'],
-      ['trunkLeanDeg', 'Trunk lean', '°', [0, 20], [-20, 45], 'Upright-to-forward, never back'],
-      ['backswingFlexDeg', 'Backswing knee bend', '°', [40, 90], [10, 140], 'Compact swing — placement over power'],
-      ['followThroughDeg', 'Follow-through', '°', [30, 65], [0, 100], 'Short and controlled to target'],
-      ['ankleStabilityDeg', 'Ankle wobble', '°', [0, 8], [0, 25], 'Firm ankle guides the ball'],
-      ['headMoveCm', 'Head movement', 'cm', [0, 12], [0, 30], 'Still head, clean strike'],
-      ['armBalanceDeg', 'Balance arm', '°', [15, 60], [0, 90], 'Opposite arm out to counter-balance'],
-    ],
+    focus: ['Plant foot level with the ball', 'Body compact and over the ball', 'Firm, stable ankle', 'Short, controlled follow-through'],
+    gauges: sideGauges({
+      plantOffsetCm: ['Plant offset', 'cm', [0, 25], [-15, 50], 'Level with the ball'],
+      kneeOverBallDeg: ['Knee over ball', '°', [0, 20], [-15, 45], 'Stay compact over the strike'],
+      kneeExtensionDeg: ['Knee extension', '°', [110, 160], [80, 190], 'Firm, guided — not a full snap'],
+      trunkLeanDeg: ['Trunk lean', '°', [0, 20], [-20, 45], 'Upright-to-forward, never back'],
+      backswingFlexDeg: ['Backswing knee bend', '°', [40, 90], [10, 140], 'Compact swing — placement over power'],
+      followThroughDeg: ['Follow-through', '°', [30, 65], [0, 100], 'Short and controlled to target'],
+      followHeightCm: ['Follow-through height', 'cm', [15, 60], [0, 120], 'Kept low and toward target'],
+      anklePointDeg: undefined,
+    }), gaugesBehind: BEHIND_GAUGES,
+  },
+  curl: {
+    id: 'curl', name: 'Curled / finesse', range: 'Bend · placement', view: 'behind',
+    blurb: 'Wrap across the ball with the inside of the foot to bend it into the far corner.',
+    focus: ['Angled approach to the ball', 'Open the hips through contact', 'Strike across the ball with the instep-side', 'Wrap the follow-through across your body'],
+    gauges: sideGauges({
+      trunkLeanDeg: ['Trunk lean', '°', [0, 22], [-20, 45], 'Slight lean over/around the ball'],
+      followThroughDeg: ['Follow-through', '°', [45, 85], [10, 110], 'Wrap up and across'],
+      anklePointDeg: undefined,
+    }), gaugesBehind: BEHIND_GAUGES,
+  },
+  volley: {
+    id: 'volley', name: 'Volley', range: 'Aerial · timing', view: 'side',
+    blurb: 'Strike the ball out of the air — knee over it, ankle locked, get on top to keep it down.',
+    focus: ['Knee over the ball at contact', 'Ankle locked and firm', 'Chest over the ball to keep it down', 'Compact, controlled swing'],
+    gauges: sideGauges({
+      plantOffsetCm: undefined, plantFootAngleDeg: undefined,
+      kneeOverBallDeg: ['Knee over ball', '°', [10, 35], [-10, 55], 'Get on top to keep it down'],
+      kneeExtensionDeg: ['Knee extension', '°', [100, 155], [70, 190], 'Punch, don’t over-swing'],
+      trunkLeanDeg: ['Trunk lean', '°', [8, 30], [-20, 50], 'Chest over the ball'],
+      backswingFlexDeg: ['Knee cock', '°', [60, 110], [20, 150], 'Load the knee, short backlift'],
+      followThroughDeg: ['Follow-through', '°', [35, 75], [0, 110], 'Controlled, not wild'],
+    }), gaugesBehind: BEHIND_GAUGES,
+  },
+  chip: {
+    id: 'chip', name: 'Chip / scoop', range: 'Lift · finesse', view: 'side',
+    blurb: 'A short stab under the ball with a slight lean back to lift it over the keeper.',
+    focus: ['Slight lean back to get under the ball', 'Short, stabbing swing — little follow-through', 'Firm ankle, wedge under the ball', 'Plant foot close and beside the ball'],
+    gauges: sideGauges({
+      kneeOverBallDeg: ['Knee position', '°', [-15, 10], [-40, 40], 'Knee back a touch to get under it'],
+      kneeExtensionDeg: ['Knee extension', '°', [90, 140], [60, 180], 'Short stab, not a full snap'],
+      trunkLeanDeg: ['Trunk lean', '°', [-20, 5], [-45, 30], 'Slight lean BACK is correct for a chip'],
+      backswingFlexDeg: ['Backswing knee bend', '°', [30, 75], [10, 130], 'Short backlift'],
+      followThroughDeg: ['Follow-through', '°', [10, 45], [0, 90], 'Almost none — a stab'],
+      followHeightCm: ['Follow-through height', 'cm', [0, 40], [0, 110], 'Cut short deliberately'],
+      anklePointDeg: undefined,
+    }), gaugesBehind: BEHIND_GAUGES,
+  },
+  freekick: {
+    id: 'freekick', name: 'Free kick', range: 'Dead ball · bend', view: 'behind',
+    blurb: 'Dead-ball strike — settle, angled run-up, and either wrap it or drive through the middle.',
+    focus: ['Consistent angled approach', 'Open hips through the ball', 'Clean plant beside the ball', 'Wrap or drive depending on the target'],
+    gauges: sideGauges({ anklePointDeg: undefined }), gaugesBehind: BEHIND_GAUGES,
+  },
+  penalty: {
+    id: 'penalty', name: 'Penalty', range: 'Placement · nerve', view: 'behind',
+    blurb: 'Pick your spot and commit — a repeatable plant, still head and clean contact.',
+    focus: ['Repeatable approach and plant', 'Still head through contact', 'Firm ankle, clean strike', 'Commit to the corner'],
+    gauges: sideGauges({
+      kneeOverBallDeg: ['Knee over ball', '°', [0, 25], [-15, 45], 'Keep it down and on target'],
+      backswingFlexDeg: ['Backswing knee bend', '°', [50, 100], [10, 140], 'Controlled, repeatable'],
+      followThroughDeg: ['Follow-through', '°', [35, 80], [0, 110], 'Through the ball to the corner'],
+      anklePointDeg: undefined,
+    }), gaugesBehind: BEHIND_GAUGES,
   },
 };
 
+// where you're shooting — short environment context (camera specifics live in SHOOT_FRAMING)
 const SHOT_SETTINGS = {
-  goal: {
-    id: 'goal', name: 'Full goal',
+  goal:  { id: 'goal',  name: 'Full goal',        note: 'Ball 12–20 yards out, dead centre. Net catches the ball so you can shoot freely.' },
+  wall:  { id: 'wall',  name: 'Wall / rebounder', note: 'Tighter space — the ball comes back, so give yourself room and expect a rebound.' },
+  field: { id: 'field', name: 'Open field',       note: 'Use a clean, uncluttered background — no one walking behind you.' },
+};
+
+// camera angle rules per view — CLOSE-UP and SLO-MO are enforced
+const SHOOT_FRAMING = {
+  side: {
+    lead: 'Side profile — the reference angle for plant, knee, chest lean and follow-through.',
     steps: [
-      'Set the ball 16–20 yards out, dead centre works best.',
-      'Put the phone side-on, 6–8 m (20–26 ft) from the ball line, lens at hip height.',
-      'Frame the ball in the middle with your full run-up and body in shot — head to feet.',
-      'Start recording, take your normal 3–5 step run-up, strike once.',
-      'Stop recording. One strike per clip, under 10 seconds.',
+      'Phone square to your shooting line (a true 90° side angle), lens at hip height.',
+      'Close up: 5–8 ft (1.5–2.5 m) from the ball so your body and the ball fill the frame.',
+      'Keep 2–3 run-up steps and your whole body in shot, on a dead-still tripod.',
     ],
   },
-  wall: {
-    id: 'wall', name: 'Wall / rebounder',
+  behind: {
+    lead: 'Directly behind — the angle for hip rotation, approach path and plant placement. Best for curls, free kicks and penalties.',
     steps: [
-      'Give yourself 5+ m to the wall so the rebound clears you.',
-      'Put the phone side-on, 4–5 m (13–16 ft) from the ball, lens at hip height.',
-      'Frame the ball centred with your whole body and 2–3 run-up steps in shot.',
-      'Start recording, strike once, let the rebound go.',
-      'Stop recording. One strike per clip, under 10 seconds.',
-    ],
-  },
-  field: {
-    id: 'field', name: 'Open field',
-    steps: [
-      'Pick a spot with a clean, uncluttered background — no people walking behind you.',
-      'Put the phone side-on, 5–7 m (16–23 ft) from the ball, lens at hip height.',
-      'Frame the ball centred; your full body and run-up must stay in shot.',
-      'Start recording, take your run-up, strike once toward your target.',
-      'Stop recording. One strike per clip, under 10 seconds.',
+      'Phone straight down your shooting line, directly behind you, lens at hip height.',
+      'Close up: 5–8 ft (1.5–2.5 m) behind the ball so you and the ball fill the frame.',
+      'Run straight through toward the ball, staying centred, on a dead-still tripod.',
     ],
   },
 };
+const SLOMO_RULE = 'Film every shot in slo-mo at 120fps or higher. Ball contact lasts ~10ms and blurs between frames at normal speed — clips that aren’t slow-motion are rejected.';
 
-const SLOMO_TIP = 'Ball contact lasts about 10 milliseconds — at normal speed it happens between frames. Film in your phone’s slo-mo mode (120/240fps) and the strike frames become razor sharp.';
+/* ---------------- source frame-rate estimate ----------------
+   The browser can't read fps from the file, so estimate it: probe the clip
+   at 300 Hz and count how many DISTINCT decoded frames fall in the window.
+   ~120 distinct/sec ⇒ slo-mo; ~30–60 ⇒ normal speed. */
+async function estimateSourceFps(file) {
+  const url = URL.createObjectURL(file);
+  const v = document.createElement('video');
+  v.src = url; v.muted = true; v.playsInline = true; v.preload = 'auto';
+  try {
+    await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = () => rej(new Error('read')); setTimeout(() => rej(new Error('timeout')), 12000); });
+    const dur = v.duration; if (!dur || !isFinite(dur)) return null;
+    const win = Math.min(0.5, dur * 0.6);
+    const start = Math.max(0, dur / 2 - win / 2);
+    const probe = 1 / 300;
+    const n = Math.min(150, Math.max(24, Math.round(win / probe)));
+    const cw = 48, ch = 27;
+    const cn = document.createElement('canvas'); cn.width = cw; cn.height = ch;
+    const cx = cn.getContext('2d', { willReadFrequently: true });
+    let prev = null, distinct = 0;
+    for (let i = 0; i < n; i++) {
+      await seekTo(v, start + i * probe);
+      cx.drawImage(v, 0, 0, cw, ch);
+      const d = cx.getImageData(0, 0, cw, ch).data;
+      if (!prev) distinct = 1;
+      else {
+        let diff = 0, cnt = 0;
+        for (let p = 0; p < d.length; p += 16) { diff += Math.abs(d[p] - prev[p]) + Math.abs(d[p + 1] - prev[p + 1]) + Math.abs(d[p + 2] - prev[p + 2]); cnt++; }
+        if (diff / cnt > 6) distinct++;
+      }
+      prev = d.slice();
+    }
+    return distinct / (n * probe);
+  } catch { return null; }
+  finally { URL.revokeObjectURL(url); v.src = ''; }
+}
 
 /* ---------------- per-foot landmark map ---------------- */
 function kickIdx(foot) {
   return foot === 'L'
-    ? { ank: L.lAnkle, knee: L.lKnee, hip: L.lHip, toe: L.lToe, pAnk: L.rAnkle, pKnee: L.rKnee, oppSh: L.rShoulder, oppWr: L.rWrist }
-    : { ank: L.rAnkle, knee: L.rKnee, hip: L.rHip, toe: L.rToe, pAnk: L.lAnkle, pKnee: L.lKnee, oppSh: L.lShoulder, oppWr: L.lWrist };
+    ? { ank: L.lAnkle, knee: L.lKnee, hip: L.lHip, toe: L.lToe, pAnk: L.rAnkle, pKnee: L.rKnee, pToe: L.rToe, oppSh: L.rShoulder, oppWr: L.rWrist }
+    : { ank: L.rAnkle, knee: L.rKnee, hip: L.rHip, toe: L.rToe, pAnk: L.lAnkle, pKnee: L.lKnee, pToe: L.lToe, oppSh: L.lShoulder, oppWr: L.lWrist };
 }
 
 /* interior angle at b (degrees) */
@@ -243,8 +334,16 @@ function computeShotMetrics(track, ph, typeId, foot, profile) {
   // backswing knee flexion (0 = straight leg)
   const backswingFlexDeg = Number.isFinite(ph.minKneeInterior) ? 180 - ph.minKneeInterior : NaN;
 
+  // knee extension at impact (dot-product interior angle; higher = straighter/snappier)
+  const kneeExtensionDeg = angleAt(P(c, K.hip), P(c, K.knee), P(c, K.ank));
+
   // follow-through: peak thigh swing after contact
   const followThroughDeg = angleFromDown(P(followI, K.hip), P(followI, K.knee));
+
+  // follow-through height: how high the boot finishes above the contact point
+  let toeMinY = P(c, K.toe).y;
+  for (let i = c; i <= Math.min(FR.length - 1, followI + 2); i++) toeMinY = Math.min(toeMinY, P(i, K.toe).y);
+  const followHeightCm = cm(P(c, K.toe).y - toeMinY);
 
   // ankle: foot-shank alignment at contact (instep wants pointed) + wobble around it
   const anklePointDeg = angleAt(P(c, K.knee), P(c, K.ank), P(c, K.toe));
@@ -265,12 +364,15 @@ function computeShotMetrics(track, ph, typeId, foot, profile) {
   return {
     shotType: typeId,
     strikingFoot: foot,
+    view: 'side',
     plantOffsetCm: r1(plantOffsetCm),
     kneeOverBallDeg: r1(kneeOverBallDeg),
+    kneeExtensionDeg: r1(kneeExtensionDeg),
     trunkLeanDeg: r1(trunkLeanDeg),
     backswingFlexDeg: r1(backswingFlexDeg),
     followThroughDeg: r1(followThroughDeg),
-    anklePointDeg: typeId === 'instep' ? r1(anklePointDeg) : null,
+    followHeightCm: r1(followHeightCm),
+    anklePointDeg: r1(anklePointDeg),
     ankleStabilityDeg: r1(ankleStabilityDeg),
     headMoveCm: r1(headMoveCm),
     armBalanceDeg: r1(armBalanceDeg),
@@ -283,9 +385,69 @@ function computeShotMetrics(track, ph, typeId, foot, profile) {
   };
 }
 
-function evaluateShot(m, typeId) {
+/* ---------------- behind (frontal-plane) metrics ----------------
+   Approximate from a single 2D view — the right angle for hip rotation
+   and approach path, which the side profile can't see. Labelled approx. */
+function computeShotMetricsBehind(track, ph, typeId, foot, profile) {
+  const { FR, contactI, plantI, followI, torsoPx } = ph;
+  const K = kickIdx(foot);
+  const P = (i, idx) => px(FR[i].lm[idx], track);
+  const realH = parseHeightMeters(profile?.height);
+  const mPerPx = realH && torsoPx ? realH / (torsoPx / 0.288) : null;
+  const cm = pxv => (mPerPx ? pxv * mPerPx * 100 : NaN);
+
+  // hip rotation: range of the pelvis-line angle through the strike
+  const hipLineAng = i => {
+    const l = P(i, L.lHip), r = P(i, L.rHip);
+    return Math.atan2(r.y - l.y, r.x - l.x) * 180 / Math.PI;
+  };
+  const angs = [];
+  for (let i = plantI; i <= Math.min(FR.length - 1, followI); i++) angs.push(hipLineAng(i));
+  const hipRotationDeg = angs.length ? (pct(angs, 92) - pct(angs, 8)) : NaN;
+
+  // chest tilt: lateral lean of the trunk at contact (frontal plane)
+  const shC = mid(P(contactI, L.lShoulder), P(contactI, L.rShoulder));
+  const hipC = mid(P(contactI, L.lHip), P(contactI, L.rHip));
+  const chestSquareDeg = Math.abs(Math.atan2(shC.x - hipC.x, -(shC.y - hipC.y)) * 180 / Math.PI);
+
+  // plant beside ball: lateral gap between plant foot and strike point at contact
+  const plantLateralCm = Math.abs(cm(P(contactI, K.ank).x - P(contactI, K.pAnk).x));
+
+  // approach angle: run-up direction in the image, off straight-down-the-lane
+  const start = mid(P(0, L.lHip), P(0, L.rHip));
+  const dx = hipC.x - start.x, dy = hipC.y - start.y;
+  const approachAngleDeg = (Math.abs(dx) + Math.abs(dy) < torsoPx * 0.2) ? NaN
+    : Math.abs(Math.atan2(dx, Math.abs(dy) || 1e-3) * 180 / Math.PI);
+
+  // follow direction: how far the kicking leg swings across after contact
+  const aC = P(contactI, K.ank), aF = P(followI, K.ank);
+  const followSwingDeg = Math.abs(Math.atan2(aF.x - aC.x, -(aF.y - aC.y)) * 180 / Math.PI);
+
+  const headMoveCm = cm(dist(P(plantI, L.nose), P(contactI, L.nose)));
+  const gapMs = FR.length > 1 ? ((FR[FR.length - 1].t - FR[0].t) / (FR.length - 1)) * 1000 : NaN;
+
+  return {
+    shotType: typeId, strikingFoot: foot, view: 'behind',
+    hipRotationDeg: r1(hipRotationDeg),
+    chestSquareDeg: r1(chestSquareDeg),
+    plantLateralCm: r1(plantLateralCm),
+    approachAngleDeg: r1(approachAngleDeg),
+    followSwingDeg: r1(followSwingDeg),
+    headMoveCm: r1(headMoveCm),
+    heightUsedM: realH ? +realH.toFixed(2) : null,
+    frameGapMs: r1(gapMs),
+    strikeSharpFrames: ph.strikeSharpFrames,
+    contactApprox: ph.strikeSharpFrames < 3,
+    phaseTimes: { plant: +FR[plantI].t.toFixed(3), contact: +FR[contactI].t.toFixed(3), follow: +FR[followI].t.toFixed(3) },
+    scaleNote: mPerPx ? null : 'Add your height in Profile to get the centimetre values.',
+    approxNote: 'Behind-view lateral metrics are approximate from a single 2D camera.',
+  };
+}
+
+function evaluateShot(m, typeId, view = 'side') {
+  const set = view === 'behind' ? SHOT_TYPES[typeId].gaugesBehind : SHOT_TYPES[typeId].gauges;
   const g = [];
-  for (const [key, label, unit, band, scale, hint] of SHOT_TYPES[typeId].gauges) {
+  for (const [key, label, unit, band, scale, hint] of set) {
     const value = m[key];
     if (value === null || value === undefined) continue;
     const [lo, hi] = band, [min, max] = scale;
@@ -296,11 +458,14 @@ function evaluateShot(m, typeId) {
 }
 
 /* ---------------- coach prompt ---------------- */
-function shotSystemPrompt() {
+function shotSystemPrompt(view = 'side') {
   return `You are "Night Match", an elite striking coach analysing ONE athlete's single shot.
 ${typeof profileSummary === 'function' ? profileSummary() : ''}
 
-You are given objective body-mechanics measurements extracted from side-on video by a pose-tracking model. The ball itself was not tracked — never claim to know where the shot went, its speed, or whether it scored.
+You are given objective body-mechanics measurements extracted from ${view === 'behind' ? 'a DIRECTLY-BEHIND (frontal-plane)' : 'a SIDE-ON'} slow-motion video by a pose-tracking model. The ball itself was not tracked — never claim to know where the shot went, its speed, or whether it scored.
+${view === 'behind'
+  ? 'This is the behind view — coach hip rotation, approach path, plant placement and follow direction. These lateral metrics are approximate from one 2D camera; hedge. Do not comment on knee-over-ball or plant fore/aft distance (that needs the side view).'
+  : 'This is the side view — the reference angle for plant distance, knee, chest lean and follow-through.'}
 
 RULES
 - Base every claim on the measurements provided. If a metric is null, it was not measurable — do not comment on it.
@@ -324,16 +489,18 @@ Return ONLY valid JSON, no markdown, exactly this shape:
 Give exactly 3 fixes, ranked 1-3 by impact.`;
 }
 
-function shotBrief(m, weakFoot) {
+function shotBrief(m, weakFoot, view = 'side') {
   const t = SHOT_TYPES[m.shotType];
+  const set = view === 'behind' ? t.gaugesBehind : t.gauges;
   const lines = [
-    `Shot type: ${t.name} (${t.range})`,
+    `Shot type: ${t.name} (${t.range}) · view: ${view === 'behind' ? 'directly behind' : 'side-on'}`,
     `Striking foot: ${m.strikingFoot === 'L' ? 'Left' : 'Right'}${weakFoot ? ' — THIS IS THEIR WEAK FOOT. Judge against realistic weak-foot standards, credit what already works, and bias drills toward weak-foot repetitions.' : ''}`,
-    m.contactApprox ? 'NOTE: contact timing is approximate (few frames covered the strike — normal-speed video). Treat contact-frame values as approximate.' : 'Contact frame was sharply resolved.',
+    m.contactApprox ? 'NOTE: contact timing is approximate (few frames covered the strike).' : 'Contact frame was sharply resolved.',
+    m.approxNote ? 'NOTE: ' + m.approxNote : '',
     '',
-    'MEASURED (side-on):',
-  ];
-  for (const [key, label, unit, band] of t.gauges) {
+    `MEASURED (${view === 'behind' ? 'behind, approximate' : 'side-on'}):`,
+  ].filter(Boolean);
+  for (const [key, label, unit, band] of set) {
     const v = m[key];
     lines.push(`- ${label}: ${v === null || v === undefined ? 'not measurable' : v + ' ' + unit} (target ${band[0]}–${band[1]} ${unit})`);
   }
@@ -393,19 +560,29 @@ function drawPoseOnCanvas(ctx, lm, w, h, foot) {
 /* =====================================================================
    SHOOTING VIEW — controller
    ===================================================================== */
-const sh = { type: 'instep', foot: 'R', setting: 'goal', busy: false, cancelled: false };
+const sh = { type: 'instep', view: 'side', foot: 'R', setting: 'goal', busy: false, cancelled: false };
 
 function initShoot() {
   const p = store.get('profile');
   sh.foot = p?.foot === 'Left' ? 'L' : 'R';
+  sh.view = SHOT_TYPES[sh.type].view;
 
   renderShotTypes();
+  renderViewSeg();
   renderShotGuide();
   renderFootSeg();
 
   $('#shTypes').addEventListener('click', e => {
     const card = e.target.closest('[data-type]'); if (!card) return;
-    sh.type = card.dataset.type; renderShotTypes(); renderShotGuide();
+    sh.type = card.dataset.type;
+    sh.view = SHOT_TYPES[sh.type].view;   // default to the angle this shot reads best from
+    renderShotTypes(); renderViewSeg(); renderShotGuide();
+  });
+
+  const viewSeg = $('.sh-view-seg');
+  if (viewSeg) viewSeg.addEventListener('click', e => {
+    const b = e.target.closest('.seg-btn'); if (!b) return;
+    sh.view = b.dataset.view; renderViewSeg(); renderShotGuide();
   });
 
   $('.sh-foot-seg').addEventListener('click', e => {
@@ -440,6 +617,13 @@ function renderShotTypes() {
     </button>`).join('');
 }
 
+function renderViewSeg() {
+  const seg = $('.sh-view-seg'); if (!seg) return;
+  $$('.seg-btn', seg).forEach(b => b.classList.toggle('on', b.dataset.view === sh.view));
+  const rec = $('#shViewRec');
+  if (rec) rec.textContent = `Recommended for a ${SHOT_TYPES[sh.type].name.toLowerCase()}: ${SHOT_TYPES[sh.type].view === 'behind' ? 'directly behind' : 'side profile'}.`;
+}
+
 function renderFootSeg() {
   $$('.seg-btn', $('.sh-foot-seg')).forEach(b => b.classList.toggle('on', b.dataset.val === sh.foot));
   const p = store.get('profile');
@@ -456,12 +640,17 @@ function isWeakFootSession() {
 }
 
 function renderShotGuide() {
-  const s = SHOT_SETTINGS[sh.setting];
+  const s = SHOT_SETTINGS[sh.setting], fr = SHOOT_FRAMING[sh.view];
   $('#shGuide').innerHTML = `
-    <ol class="az-guide-list">${s.steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol>
+    <div class="az-guide-lead">${esc(fr.lead)}</div>
+    <ol class="az-guide-list">${fr.steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol>
     <div class="sh-slomo">
-      <span class="sh-slomo-tag">Slo-mo</span>
-      <span>${esc(SLOMO_TIP)}</span>
+      <span class="sh-slomo-tag">Slo-mo required</span>
+      <span>${esc(SLOMO_RULE)}</span>
+    </div>
+    <div class="az-guide-tips">
+      <div class="az-guide-tips-h">${esc(s.name)}</div>
+      <ul><li>${esc(s.note)}</li><li>One strike per clip, under ~8 seconds.</li></ul>
     </div>`;
 }
 
@@ -519,18 +708,37 @@ async function startShootAnalysis(file) {
   $('#shResult').classList.add('hidden');
   $('#shWorking').classList.remove('hidden');
   $$('#shPhases li').forEach(li => li.classList.remove('on', 'done'));
-  shStatus('Reading your clip…', 0.02, 0);
+  shStatus('Checking frame rate…', 0.02, 0);
 
   let grabber = null;
   try {
+    // slo-mo gate first — reject clearly-non-slo-mo before heavy work
+    const fps = await estimateSourceFps(file);
+    if (sh.cancelled) return;
+    if (fps !== null && fps < 85) {
+      shBlocked([{ title: 'This clip isn’t slow-motion', fix: `Film every shot in slo-mo at 120fps or higher (this looks like ~${Math.round(fps)}fps). Contact lasts ~10ms and blurs between frames at normal speed.` }]);
+      return;
+    }
+
     // pass 1: coarse scan of the whole clip
-    const coarse = await extractPose(file, (msg, frac) => shStatus(msg, (frac ?? 0) * 0.55, frac && frac > 0.07 ? 1 : 0));
+    shStatus('Reading your clip…', 0.08, 0);
+    const coarse = await extractPose(file, (msg, frac) => shStatus(msg, 0.08 + (frac ?? 0) * 0.45, frac && frac > 0.07 ? 1 : 0));
     if (sh.cancelled) return;
 
     const quality = gradeCapture(coarse);
     const issues = quality.ok ? [] : [...quality.issues];
-    const view = sideOnCheck(coarse);
-    if (!view.sideOn) issues.push({ title: 'This clip is not side-on', fix: 'Move the camera so it looks at you from the side, square to your run-up — front-on angles hide every measurement that matters for striking.' });
+
+    // close-up gate — the body + ball must fill the frame (5–8 ft)
+    if (Number.isFinite(quality.medSize) && quality.medSize < 0.42) {
+      issues.push({ title: 'Move the camera closer', fix: 'Film 5–8 ft (1.5–2.5 m) away so your body and the ball fill the frame — from far back the fine angles can’t be read.' });
+    }
+
+    // camera angle must match the chosen view
+    const det = sideOnCheck(coarse);
+    const wantSide = sh.view === 'side';
+    if (wantSide && !det.sideOn) issues.push({ title: 'This clip is not side-on', fix: 'Set the camera square to your side (a true 90° profile) — front-on angles hide the plant, knee and lean.' });
+    if (!wantSide && det.sideOn) issues.push({ title: 'This clip is not from behind', fix: 'Set the camera directly behind you, looking straight down your shooting line — the side profile can’t read hip rotation or approach path.' });
+
     const strike = findStrike(coarse, sh.foot);
     if (!strike.ok) issues.push({ title: 'No clear strike detected', fix: `Make sure your ${sh.foot === 'L' ? 'left' : 'right'} foot actually strikes in this clip, your legs are visible throughout, and there is one single shot in the recording.` });
     if (issues.length) { shBlocked(issues); return; }
@@ -613,23 +821,29 @@ async function showContactConfirm(file, refined, phases, grabber) {
       const ph = detectShotPhases(refined, sh.foot, chosen);
       shStatus('Measuring your strike…', 0.88, 2);
       const profile = store.get('profile');
-      const metrics = computeShotMetrics(refined, ph, sh.type, sh.foot, profile);
+      const behind = sh.view === 'behind';
+      const metrics = behind
+        ? computeShotMetricsBehind(refined, ph, sh.type, sh.foot, profile)
+        : computeShotMetrics(refined, ph, sh.type, sh.foot, profile);
 
-      // signature stills at final phase frames
-      const stills = [];
-      const cap = {
+      // signature stills at the three phase frames
+      const cap = behind ? {
+        plant: 'Plant & set', contact: metrics.hipRotationDeg !== null ? `Hips ${metrics.hipRotationDeg}°` : 'Contact',
+        follow: metrics.followSwingDeg !== null ? `Swing ${metrics.followSwingDeg}°` : 'Follow-through',
+      } : {
         plant: metrics.backswingFlexDeg !== null ? `Knee bend ${metrics.backswingFlexDeg}°` : 'Plant foot down',
         contact: [metrics.kneeOverBallDeg !== null ? `Knee ${metrics.kneeOverBallDeg}° over` : null,
                   metrics.plantOffsetCm !== null ? `plant ${metrics.plantOffsetCm}cm` : null].filter(Boolean).join(' · ') || 'The strike',
         follow: metrics.followThroughDeg !== null ? `Swing to ${metrics.followThroughDeg}°` : 'Swing through',
       };
+      const stills = [];
       for (const [phase, idx, caption] of [['Plant', ph.plantI, cap.plant], ['Contact', ph.contactI, cap.contact], ['Follow-through', ph.followI, cap.follow]]) {
         stills.push({ phase, caption, img: await grabber.grab(ph.FR[idx].t, ph.FR[idx].lm, sh.foot) });
       }
       grabber.close();
 
       shStatus('Coach is reading your strike…', 0.94, 3);
-      const { text } = await callGemini(shotSystemPrompt(), shotBrief(metrics, isWeakFootSession()), false, true);
+      const { text } = await callGemini(shotSystemPrompt(sh.view), shotBrief(metrics, isWeakFootSession(), sh.view), false, true);
       let report;
       try { report = JSON.parse(cleanJSON(text)); }
       catch { throw new Error('The coach returned an unreadable report. Try again.'); }
@@ -653,14 +867,15 @@ function renderShotReport(out, file) {
   el.classList.remove('hidden');
 
   const impactClass = i => ({ high: 'hi', medium: 'md', low: 'lo' }[String(i || '').toLowerCase()] || 'md');
-  const gauges = evaluateShot(m, m.shotType);
+  const behind = m.view === 'behind';
+  const gauges = evaluateShot(m, m.shotType, m.view);
   const footLabel = m.strikingFoot === 'L' ? 'Left foot' : 'Right foot';
   const weak = isWeakFootSession();
 
   el.innerHTML = `
     <div class="az-report">
       <header class="az-headline">
-        <span class="az-tag">${esc(t.name)} · ${footLabel}${weak ? ' · weak foot' : ''}</span>
+        <span class="az-tag">${esc(t.name)} · ${behind ? 'behind' : 'side'} · ${footLabel}${weak ? ' · weak foot' : ''}</span>
         <h2>${esc(r.headline || 'Your strike, measured.')}</h2>
       </header>
 
@@ -702,7 +917,7 @@ function renderShotReport(out, file) {
           </div>` : ''}
 
           <div class="az-gauges">
-            <div class="az-sec-h"><span>Measured</span><em>vs ${esc(t.name.toLowerCase())} target</em></div>
+            <div class="az-sec-h"><span>Measured</span><em>${behind ? 'behind · approx' : 'vs ' + esc(t.name.toLowerCase())} target</em></div>
             ${gauges.map(gaugeHTML).join('')}
           </div>
 
@@ -717,7 +932,9 @@ function renderShotReport(out, file) {
             </label>
           </div>
 
-          <p class="az-note">${m.scaleNote ? esc(m.scaleNote) + ' ' : ''}Angles are measured from side-on pose tracking; centimetre values are scaled from your height and shift with camera angle. The ball is not tracked — this reads your body, not the shot's result.</p>
+          <p class="az-note">${m.scaleNote ? esc(m.scaleNote) + ' ' : ''}${behind
+            ? 'Behind-view lateral metrics (hip rotation, approach, follow direction) are approximate from a single 2D camera. The ball is not tracked — this reads your body, not the shot’s result.'
+            : 'Angles are measured from side-on pose tracking; centimetre values are scaled from your height. The ball is not tracked — this reads your body, not the shot’s result.'}</p>
         </aside>
       </div>
 
