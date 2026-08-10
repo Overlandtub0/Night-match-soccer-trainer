@@ -140,6 +140,133 @@ function finishOnboarding() {
 }
 
 /* =====================================================================
+   HOME
+   Everything here is drawn from what's actually stored. Where there's
+   no data yet we say so and point at the thing that creates it —
+   inventing a personal best would be lying to the athlete.
+   ===================================================================== */
+function renderHome() {
+  const p = store.get('profile') || {};
+  const plans = store.get('plans', []);
+  const saved = store.get('saved', []);
+  const analyses = saved.filter(s => s.type === 'analysis');
+
+  // ---- hero CTA sub-line ----
+  const sideEl = $('#hmCtaSide');
+  if (sideEl) sideEl.textContent = plans.length
+    ? `${plans.length} plan${plans.length > 1 ? 's' : ''} saved`
+    : 'Build your first plan';
+
+  // ---- weak-spot drill line ----
+  const weakEl = $('#hmWeakLine');
+  if (weakEl) {
+    const w = (p.weaknesses || '').trim();
+    weakEl.textContent = w && w.length > 2 ? w.slice(0, 60) : 'Add a weakness in Profile to tune this';
+  }
+
+  // ---- three cards ----
+  const trio = [
+    { t: 'Weekly training',
+      d: plans.length
+        ? `${plans[0].days} sessions a week over ${plans[0].weeks} weeks.`
+        : 'No plan yet — build one and it shows up here.',
+      i: '<path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/>' },
+    { t: 'Sessions filmed',
+      d: analyses.length
+        ? `${analyses.length} clip${analyses.length > 1 ? 's' : ''} analysed and saved.`
+        : 'Film a sprint or a strike to start your record.',
+      i: '<path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>' },
+    { t: 'Skill focus',
+      d: (p.weaknesses || '').trim()
+        ? `This block: ${(p.weaknesses || '').trim().slice(0, 48)}.`
+        : 'Set your weak spots in Profile to focus the coaching.',
+      i: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/>' },
+  ];
+  $('#hmTrio').innerHTML = trio.map(c => `
+    <div class="hm-card">
+      <span class="hm-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${c.i}</svg></span>
+      <div><h3>${esc(c.t)}</h3><p>${esc(c.d)}</p></div>
+    </div>`).join('');
+
+  // ---- featured session ----
+  const feat = $('#hmFeature');
+  if (plans.length) {
+    const pl = plans[0];
+    const wk = (pl.plan?.weeks || [])[0] || {};
+    const day = (wk.days || [])[0] || {};
+    feat.innerHTML = `
+      <div class="hm-feat-l">
+        <span class="hm-kicker">Up next · ${esc(pl.plan?.title || pl.goal || 'Your plan')}</span>
+        <h2>${esc(day.day || 'Week 1')}</h2>
+        <div class="hm-feat-meta">${esc(wk.focus || 'Session 1')} · ${esc(pl.days)} days/week · ${esc(pl.weeks)} weeks</div>
+        <p class="hm-feat-detail">${esc((day.detail || '').slice(0, 180))}</p>
+        <button class="btn btn-accent" data-go="plans">Open the plan</button>
+      </div>
+      <div class="hm-feat-r">${drillDiagramSVG()}</div>`;
+  } else {
+    feat.innerHTML = `
+      <div class="hm-feat-l">
+        <span class="hm-kicker">Get started</span>
+        <h2>Build your<br>first program</h2>
+        <div class="hm-feat-meta">Multi-week · tuned to your position and goals</div>
+        <p class="hm-feat-detail">Tell the coach what you're working toward and how many days a week you can train. It writes the weeks, the sessions and the drills.</p>
+        <button class="btn btn-accent" data-go="plans">Build my plan</button>
+      </div>
+      <div class="hm-feat-r">${drillDiagramSVG()}</div>`;
+  }
+
+  // ---- analytics ----
+  renderHomeStats(analyses, plans, saved);
+}
+
+function drillDiagramSVG() {
+  return `<div class="hm-diagram"><svg viewBox="0 0 440 300">
+    <rect width="440" height="300" fill="#F5F8FC"/>
+    <rect x="18" y="18" width="404" height="264" fill="none" stroke="#C7D3E4" stroke-width="2"/>
+    <rect x="40" y="60" width="14" height="180" fill="#1D2A5C"/>
+    <text x="62" y="152" font-family="Inter, sans-serif" font-size="11" fill="#4C5872" transform="rotate(-90 62 152)">rebound wall</text>
+    <g fill="#E58A3A"><polygon points="250,96 262,96 256,76"/><polygon points="250,224 262,224 256,204"/></g>
+    <text x="256" y="160" font-family="Inter, sans-serif" font-size="11" fill="#4C5872" text-anchor="middle">gate</text>
+    <circle cx="180" cy="150" r="13" fill="#1D2A5C"/>
+    <text x="180" y="154" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">P</text>
+    <circle cx="148" cy="150" r="6" fill="#fff" stroke="#14203F" stroke-width="2"/>
+    <g stroke="#1E8E5A" stroke-width="2.5" fill="none">
+      <path d="M141 146 L66 122"/><path d="M66 178 L141 158" stroke-dasharray="6 5"/><path d="M196 150 C 226 150, 236 150, 250 150"/>
+    </g>
+    <g fill="#1E8E5A"><polygon points="66,122 78,120 74,130"/><polygon points="141,158 129,162 132,152"/><polygon points="250,150 238,144 238,156"/></g>
+    <g font-family="Inter, sans-serif" font-size="11" fill="#4C5872">
+      <text x="96" y="112">1 · pass</text><text x="92" y="196">2 · receive</text><text x="205" y="138">3 · turn</text>
+    </g>
+    <text x="30" y="272" font-family="Inter, sans-serif" font-size="11.5" fill="#8B95AB">one touch to control, one to turn · alternate feet</text>
+  </svg></div>`;
+}
+
+function renderHomeStats(analyses, plans, saved) {
+  const el = $('#hmAnalytics');
+  const sprints = analyses.filter(a => a.analysis?.kind !== 'shot');
+
+  const stats = [
+    { k: 'Clips analysed', v: analyses.length || '—', u: '', note: analyses.length ? 'saved to this device' : 'film one to begin' },
+    { k: 'Plans built',    v: plans.length || '—',    u: '', note: plans.length ? 'open in Training Plans' : 'none yet' },
+    { k: 'Items saved',    v: saved.length || '—',    u: '', note: saved.length ? 'answers, plans and readings' : 'nothing pinned yet' },
+  ];
+
+  const cards = stats.map(s => `
+    <div class="hm-stat">
+      <div class="hm-stat-k">${esc(s.k)}</div>
+      <div class="hm-stat-v">${esc(String(s.v))}<small>${esc(s.u)}</small></div>
+      <div class="hm-stat-n">${esc(s.note)}</div>
+    </div>`).join('');
+
+  const empty = !analyses.length && !plans.length && !saved.length;
+  el.innerHTML = `
+    <div class="hm-stats-row">${cards}</div>
+    <p class="hm-analytics-note">${empty
+      ? 'Nothing recorded yet. Your numbers fill in as you film sessions and build plans — everything stays on this device.'
+      : 'Counts come from what\'s saved on this device. Sign-in and progress-over-time charts are the next build.'}</p>`;
+}
+
+/* =====================================================================
    PROFILE VIEW
    ===================================================================== */
 function renderProfile() {
@@ -184,10 +311,20 @@ function initNav() {
 function switchView(view) {
   $$('.nav-btn[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   $$('.view').forEach(v => v.classList.toggle('active', v.dataset.view === view));
+  if (view === 'home') renderHome();
   if (view === 'saved') renderSaved();
   if (view === 'profile') renderProfile();
   if (view === 'plans') renderPlansList();
 }
+
+/* Any element with data-go="view" navigates. Delegated, so it also works
+   for the Home cards that are re-rendered on every visit. */
+document.addEventListener('click', e => {
+  const go = e.target.closest('[data-go]');
+  if (!go) return;
+  e.preventDefault();
+  switchView(go.dataset.go);
+});
 
 /* =====================================================================
    SETTINGS / API KEY
@@ -858,6 +995,7 @@ function bootApp() {
   $('#app').classList.remove('hidden');
   renderProfile();
   renderChips();
+  renderHome();
 }
 
 // The intro overlay plays on every load, then removes itself so it never
