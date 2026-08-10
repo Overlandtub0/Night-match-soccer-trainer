@@ -204,8 +204,8 @@ body {
 .app { position: relative; z-index: 1; display: grid; grid-template-rows: auto 1fr; grid-template-columns: 1fr; height: 100vh; padding: 0; gap: 0; }
 .sidebar { background: var(--accent); border: none; border-radius: 0; padding: 0 22px; height: 58px; display: flex; flex-direction: row; align-items: center; gap: 26px; }
 .sidebar-brand { padding: 0; }
-.sidebar-brand .brandmark { color: #fff; font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
-.sidebar-brand .brandmark-dot { background: #fff; }
+.sidebar-brand.brandmark { color: #fff; font-size: 18px; font-weight: 800; letter-spacing: -.015em; gap: 9px; padding-right: 6px; }
+.sidebar-brand .brandmark-dot { background: #fff; width: 8px; height: 8px; }
 .nav { display: flex; flex-direction: row; gap: 2px; flex: 1; }
 .nav-btn { display: flex; align-items: center; gap: 9px; padding: 9px 13px; border-radius: 9px; border: none; background: none; color: #C9D1E8; font-family: var(--font); font-size: 14px; font-weight: 500; cursor: pointer; transition: background .15s, color .15s; text-align: left; position: relative; width: auto; }
 .nav-btn:hover { background: rgba(255,255,255,.09); color: #fff; }
