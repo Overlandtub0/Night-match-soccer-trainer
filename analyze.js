@@ -1,5 +1,5 @@
 /* ============================================================
-   NIGHT MATCH — Sprint Analyzer
+   TOUCHLINE — Sprint Analyzer
    In-browser pose tracking (MediaPipe) → mechanics metrics →
    ranked fixes from the coach. Video never leaves the device.
    ============================================================ */
@@ -697,7 +697,7 @@ function benchmarkAlerts(gauges) {
 
 /* ---------------- coach prompt ---------------- */
 function analysisSystemPrompt(view = 'side') {
-  return `You are "Night Match", an elite sprint mechanics coach analysing ONE athlete's run.
+  return `You are "Touchline", an elite sprint mechanics coach analysing ONE athlete's run.
 ${typeof profileSummary === 'function' ? profileSummary() : ''}
 
 You are given objective measurements extracted from ${view === 'front' ? 'a FRONT/BACK' : 'a SIDE-ON'} phone video by a pose-tracking model. Read them like a coach reading a force plate: the numbers are real but imperfect.
@@ -958,7 +958,7 @@ function resetAnalyze() {
 function renderError(msg) {
   const el = $('#azResult');
   el.classList.remove('hidden');
-  el.innerHTML = `<div class="ans-quick" style="border-color:rgba(255,122,107,.4)">${WARN}${esc(msg)}</div>
+  el.innerHTML = `<div class="ans-quick" style="border-color:rgba(196,67,43,.45)">${WARN}${esc(msg)}</div>
     <button class="btn btn-ghost az-again">Try another clip</button>`;
   $('.az-again', el).addEventListener('click', resetAnalyze);
 }
@@ -1173,7 +1173,7 @@ const BONES = [
 function drawSkeletonFrame(ctx, lm, w, h) {
   const X = p => p.x * w, Y = p => p.y * h;
   const lw = Math.max(2, w / 320);
-  ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.strokeStyle = '#ff4d2e';
+  ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.strokeStyle = '#F2BC4B';
   ctx.shadowColor = 'rgba(255,77,46,.6)'; ctx.shadowBlur = lw * 3;
   for (const [a, b] of BONES) {
     const p = lm[a], q = lm[b];
@@ -1240,8 +1240,8 @@ async function exportAnnotated(out, file, btn) {
         const tw = ctx.measureText(txt).width;
         ctx.fillStyle = 'rgba(8,9,11,.6)'; ctx.fillRect(0, h - fs - pad * 1.6, Math.min(w, tw + pad * 2), fs + pad * 1.4);
         ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(txt, pad, h - (fs + pad * 1.6) / 2 - 2);
-        ctx.fillStyle = '#ff4d2e'; ctx.font = `600 ${Math.round(fs * 0.7)}px Inter, system-ui, sans-serif`;
-        ctx.fillText('NIGHT MATCH', pad, pad);
+        ctx.fillStyle = '#F2BC4B'; ctx.font = `600 ${Math.round(fs * 0.7)}px Inter, system-ui, sans-serif`;
+        ctx.fillText('TOUCHLINE', pad, pad);
         if (video.ended || video.paused) { resolve(); return; }
         requestAnimationFrame(step);
       };
@@ -1251,7 +1251,7 @@ async function exportAnnotated(out, file, btn) {
     rec.stop(); await stopped;
     const blob = new Blob(chunks, { type: 'video/webm' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `night-match-sprint-${Date.now()}.webm`; a.click();
+    a.download = `touchline-sprint-${Date.now()}.webm`; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     toast('Annotated clip saved');
   } catch { toast('Could not render the clip', false); }

@@ -1,5 +1,5 @@
 /* ============================================================
-   NIGHT MATCH — app logic
+   TOUCHLINE — app logic
    Static, local-first. Data + API key live in localStorage.
    ============================================================ */
 
@@ -101,7 +101,7 @@ function showStep(n) {
   $$('.onb-step').forEach(s => s.classList.toggle('hidden', +s.dataset.step !== n));
   $('#onbBar').style.width = ((n + 1) / TOTAL_STEPS * 100) + '%';
   $('#onbBack').style.visibility = n === 0 ? 'hidden' : 'visible';
-  $('#onbNext').textContent = n === TOTAL_STEPS - 1 ? 'Enter Night Match' : 'Continue';
+  $('#onbNext').textContent = n === TOTAL_STEPS - 1 ? 'Enter Touchline' : 'Continue';
 }
 
 function validateStep(n) {
@@ -261,7 +261,8 @@ async function testKey() {
 async function loadModels() {
   const mode = keyMode();
   let res;
-  if (mode === 'own') res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(store.get('apiKey'))}&pageSize=200`);
+  if (mode === 'own') res = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200',
+    { headers: { 'x-goog-api-key': store.get('apiKey') } });
   else if (backendReady) res = await fetch('/api/models');
   else throw new Error('Turn on your own API key first, or the shared backend isn’t available.');
   const data = await res.json();
@@ -350,8 +351,8 @@ async function callGemini(systemInstruction, userText, useGrounding = true, json
     let res, data;
     try {
       if (ownKey) {
-        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(ownKey)}`,
-          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': ownKey }, body: JSON.stringify(payload) });
       } else {
         res = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, payload }) });
       }
@@ -398,7 +399,7 @@ async function callGemini(systemInstruction, userText, useGrounding = true, json
    COACH CHAT
    ===================================================================== */
 function coachSystemPrompt() {
-  return `You are "Night Match", an elite personal soccer (football) coach for ONE athlete.
+  return `You are "Touchline", an elite personal soccer (football) coach for ONE athlete.
 ${profileSummary()}
 
 RULES:
@@ -533,11 +534,11 @@ function coachAnswerHTML(answer, sources, degraded = false) {
   if (sources && sources.length) {
     src = `<div class="sources"><div class="sources-title">Sources</div><div class="source-pills">` +
       sources.slice(0, 8).map((s, i) =>
-        `<a class="source-pill" href="${esc(s.uri)}" target="_blank" rel="noopener"><span class="src-num">${i + 1}</span><span class="src-t">${esc(s.title || hostOf(s.uri))}</span></a>`
+        `<a class="source-pill" href="${esc(safeUrl(s.uri))}" target="_blank" rel="noopener"><span class="src-num">${i + 1}</span><span class="src-t">${esc(s.title || hostOf(s.uri))}</span></a>`
       ).join('') + `</div></div>`;
   }
 
-  return `<div class="coach-head"><div class="coach-avatar">NM</div><div class="coach-name">Night Match <small>your coach</small></div></div>
+  return `<div class="coach-head"><div class="coach-avatar">T</div><div class="coach-name">Touchline <small>your coach</small></div></div>
     <div class="answer">${inner}${src}
       <div class="ans-actions">
         <button class="icon-btn save-btn"><svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>Save</button>
@@ -564,8 +565,8 @@ function wireSaveBtn(el, item) {
 function addErrorMsg(msg) {
   const el = document.createElement('div');
   el.className = 'msg msg-coach';
-  el.innerHTML = `<div class="coach-head"><div class="coach-avatar">NM</div><div class="coach-name">Night Match</div></div>
-    <div class="ans-quick" style="border-color:rgba(255,122,107,.4)">${WARN}${esc(msg)}</div>`;
+  el.innerHTML = `<div class="coach-head"><div class="coach-avatar">T</div><div class="coach-name">Touchline</div></div>
+    <div class="ans-quick" style="border-color:rgba(196,67,43,.45)">${WARN}${esc(msg)}</div>`;
   $('#messages').appendChild(el);
 }
 
@@ -618,7 +619,7 @@ Make exactly ${weeks} weeks and ${days} training days per week. Progress difficu
       f.goal.value = '';
       toast('Plan saved to your plans');
     } catch (err) {
-      $('#planResult').innerHTML = `<div class="ans-quick" style="border-color:rgba(255,122,107,.4)">${WARN}${esc(err.message)}</div>`;
+      $('#planResult').innerHTML = `<div class="ans-quick" style="border-color:rgba(196,67,43,.45)">${WARN}${esc(err.message)}</div>`;
     } finally {
       retryNotifier = null;
       btn.textContent = orig; btn.disabled = false;
@@ -745,7 +746,7 @@ function coachAnswerStaticHTML(text, sources) {
     return `<div class="ans-block"><div class="ans-h">${sectionIcon(s.title)} ${esc(s.title)}</div><div class="ans-body">${mdBlock(s.body)}</div></div>`;
   }).join('') || `<div class="ans-body">${mdBlock(text)}</div>`;
   if (sources?.length) inner += `<div class="sources"><div class="sources-title">Sources</div><div class="source-pills">` +
-    sources.slice(0, 8).map((s, i) => `<a class="source-pill" href="${esc(s.uri)}" target="_blank" rel="noopener"><span class="src-num">${i + 1}</span><span class="src-t">${esc(s.title || hostOf(s.uri))}</span></a>`).join('') + `</div></div>`;
+    sources.slice(0, 8).map((s, i) => `<a class="source-pill" href="${esc(safeUrl(s.uri))}" target="_blank" rel="noopener"><span class="src-num">${i + 1}</span><span class="src-t">${esc(s.title || hostOf(s.uri))}</span></a>`).join('') + `</div></div>`;
   return `<div style="margin-top:16px">${inner}</div>`;
 }
 function analysisStaticHTML(a) {
@@ -840,6 +841,8 @@ function cleanJSON(t) {
 /* ---------------- utils ---------------- */
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return 'source'; } }
+// Only ever link to http(s) — a grounding result with a javascript: URI must never become a clickable link.
+function safeUrl(u) { try { const x = new URL(u); return (x.protocol === 'http:' || x.protocol === 'https:') ? x.href : '#'; } catch { return '#'; } }
 function timeAgo(ts) {
   const s = (Date.now() - ts) / 1000;
   if (s < 60) return 'just now';

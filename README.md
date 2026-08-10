@@ -1,4 +1,4 @@
-# ⚡ Night Match — Personal Soccer Coach
+# Touchline — Personal Soccer Coach
 
 A private, personal AI soccer coach. Ask anything about your game — technical or physical —
 and get a **coach-style answer researched from live sources**, tuned to *your* profile.
@@ -51,7 +51,7 @@ The coach needs a free Google Gemini key to research and answer.
 
 ## 🎨 Design
 "Touchline: floodlit tactics board" — an **ink-turf** (green-tinted near-black) base like a
-floodlit pitch, **chalk** off-white type, and a single signature **flare vermilion** (`#FF4D2E`)
+matchday-light canvas, **ink navy** type and actions (`#1D2A5C`), **green** for good data (`#1E8E5A`), and **gold** (`#F2BC4B`) reserved for the intro ignite and on-video overlays
 accent. Display type is **Barlow Condensed** (athletic, uppercase); body is **Barlow**. A faint
 **chalk pitch diagram** (center circle, penalty boxes) reads through the background as the
 signature motif. All icons are inline SVG (no emoji), with staggered reveals, expo easing, and
