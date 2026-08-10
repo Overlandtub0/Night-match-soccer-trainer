@@ -371,7 +371,24 @@ body {
 .az-type-name { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; color: var(--text); }
 .az-type-range { font-size: 12.5px; color: var(--accent); font-weight: 500; }
 .az-type-blurb { font-size: 13.5px; line-height: 1.5; }
-.az-seg { margin-bottom: 14px; }
+.az-view-seg, .az-seg { margin-bottom: 12px; }
+
+/* capture confidence banner (warn-but-proceed) */
+.az-conf { border-radius: var(--radius); padding: 16px 18px; margin-bottom: 24px; border: 1px solid; }
+.az-conf--mid { background: rgba(255,180,80,.06); border-color: rgba(255,180,80,.28); }
+.az-conf--low { background: rgba(255,122,107,.06); border-color: rgba(255,122,107,.3); }
+.az-conf-h { display: flex; align-items: flex-start; gap: 8px; font-size: 14.5px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.az-conf-h svg { flex-shrink: 0; margin-top: 1px; }
+.az-conf ul { margin: 0; padding-left: 18px; }
+.az-conf li { font-size: 13px; color: var(--text-2); line-height: 1.5; margin-bottom: 4px; }
+
+/* benchmark flags */
+.az-bench { margin: 8px 0 20px; }
+.az-bench-chips { display: flex; flex-direction: column; gap: 8px; }
+.az-chip { font-size: 13px; line-height: 1.45; padding: 9px 13px; border-radius: 9px; border: 1px solid; }
+.az-chip--low, .az-chip--high { background: var(--accent-soft); border-color: var(--accent-line); color: var(--text); }
+.az-bench-clear { display: flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--text-2); }
+.az-bench-clear svg { width: 16px; height: 16px; fill: none; stroke: var(--good); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .az-guide { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 22px; }
 .az-guide-lead { font-size: 15px; margin-bottom: 14px; color: var(--text); }
 .az-guide-list { margin: 0 0 16px; padding: 0; list-style: none; counter-reset: g; }

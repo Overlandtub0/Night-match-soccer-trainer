@@ -287,6 +287,109 @@ function parseHeightMeters(str) {
   return null;
 }
 
+/* ====================================================================
+   v2 MATH — Savitzky-Golay smoothing + dot-product joint angles
+   ==================================================================== */
+
+// interior angle at b between a and c, via the dot product (degrees)
+function jointAngle(a, b, c) {
+  const v1 = { x: a.x - b.x, y: a.y - b.y }, v2 = { x: c.x - b.x, y: c.y - b.y };
+  const d = (v1.x * v2.x + v1.y * v2.y) / ((Math.hypot(v1.x, v1.y) * Math.hypot(v2.x, v2.y)) || 1);
+  return Math.acos(Math.max(-1, Math.min(1, d))) * 180 / Math.PI;
+}
+
+// Savitzky-Golay: local least-squares polynomial fit, value at window centre.
+// Smooths tracking jitter far better than a moving average without lagging peaks.
+function savgol(series, window = 7, poly = 3) {
+  const n = series.length;
+  if (n < 3) return series.slice();
+  if (window % 2 === 0) window += 1;
+  window = Math.min(window, n % 2 ? n : n - 1);
+  const half = window >> 1;
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const xw = [], ys = [];
+    for (let k = -half; k <= half; k++) {
+      let j = i + k; if (j < 0) j = 0; if (j >= n) j = n - 1;
+      if (Number.isFinite(series[j])) { xw.push(k); ys.push(series[j]); }
+    }
+    out[i] = ys.length > poly ? polyfitCentre(xw, ys, poly) : (Number.isFinite(series[i]) ? series[i] : NaN);
+  }
+  return out;
+}
+function polyfitCentre(xw, ys, poly) {
+  const m = poly + 1;
+  const ATA = Array.from({ length: m }, () => new Array(m).fill(0));
+  const ATy = new Array(m).fill(0);
+  for (let p = 0; p < xw.length; p++) {
+    const pw = [1]; for (let d = 1; d < 2 * m - 1; d++) pw.push(pw[d - 1] * xw[p]);
+    for (let r = 0; r < m; r++) { for (let c = 0; c < m; c++) ATA[r][c] += pw[r + c]; ATy[r] += pw[r] * ys[p]; }
+  }
+  const sol = solveLinear(ATA, ATy);
+  return sol ? sol[0] : ys[(ys.length - 1) >> 1];   // a0 = fitted value at x=0
+}
+function solveLinear(A, b) {
+  const n = A.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let piv = col;
+    for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+    if (Math.abs(M[piv][col]) < 1e-9) return null;
+    [M[col], M[piv]] = [M[piv], M[col]];
+    const d = M[col][col];
+    for (let c = col; c <= n; c++) M[col][c] /= d;
+    for (let r = 0; r < n; r++) { if (r === col) continue; const f = M[r][col]; for (let c = col; c <= n; c++) M[r][c] -= f * M[col][c]; }
+  }
+  return M.map(row => row[n]);
+}
+
+/* ---------------- camera orientation ---------------- */
+// shoulder separation ÷ torso length: small = side-on, large = facing camera.
+function orientationRatio(track) {
+  const FR = track.frames.filter(f => f.lm);
+  const r = FR.map(f => {
+    const shL = px(f.lm[L.lShoulder], track), shR = px(f.lm[L.rShoulder], track);
+    const hp = mid(px(f.lm[L.lHip], track), px(f.lm[L.rHip], track));
+    const torso = dist(mid(shL, shR), hp);
+    return torso ? Math.abs(shL.x - shR.x) / torso : NaN;
+  });
+  return median(r);
+}
+function detectView(track) {
+  const r = orientationRatio(track);
+  if (!Number.isFinite(r)) return { view: 'side', ratio: r };
+  return { view: r < 0.45 ? 'side' : r > 0.62 ? 'front' : 'oblique', ratio: +r.toFixed(2) };
+}
+
+/* ---------------- capture confidence (warn, don't block) ---------------- */
+function captureConfidence(track, expectedView) {
+  const FR = track.frames.filter(f => f.lm);
+  const coverage = FR.length / track.frames.length;
+  const det = detectView(track);
+  const hipX = FR.map(f => mid(px(f.lm[L.lHip], track), px(f.lm[L.rHip], track)).x);
+  const travelFrac = FR.length ? Math.abs(hipX[hipX.length - 1] - hipX[0]) / track.width : 0;
+  const contactsGuess = FR.length >= 4;
+  const panned = expectedView === 'side' && travelFrac < 0.22 && contactsGuess;
+  const fpsLow = track.fps < 45;
+
+  const warnings = [];
+  let score = 1;
+  const orientOff = expectedView === 'side'
+    ? det.view !== 'side'
+    : det.view !== 'front';
+  if (orientOff) {
+    score -= 0.35;
+    warnings.push(expectedView === 'side'
+      ? 'Camera looks angled, not square to the lane — perpendicular side-on gives the truest angles. Numbers here may read wider or narrower than reality.'
+      : 'Camera does not look square-on from front/behind — face the lens straight down the lane for accurate valgus and sway.');
+  }
+  if (panned) { score -= 0.25; warnings.push('The camera appears to move with you. A still tripod is needed for speed and stride length — those are hidden here.'); }
+  if (fpsLow) { score -= 0.2; warnings.push('This looks like standard-frame-rate video. Film in 60fps+ (slo-mo) so fast foot-strikes aren’t blurred between frames.'); }
+  if (coverage < 0.8) { score -= 0.15; warnings.push('You weren’t tracked in the whole clip — better light and a clean background improve every reading.'); }
+
+  return { score: Math.max(0, +score.toFixed(2)), warnings, detectedView: det.view, orientationRatio: det.ratio, panned, fpsLow, coverage: +coverage.toFixed(2) };
+}
+
 /* ---------------- quality gate ---------------- */
 function gradeCapture(track) {
   const { frames, width, height } = track;
@@ -333,11 +436,12 @@ function gradeCapture(track) {
   return { ok: issues.length === 0, issues, coverage, medVis, medSize };
 }
 
-/* ---------------- metrics ---------------- */
+/* ---------------- metrics (side view) ---------------- */
 function computeMetrics(track, type, profile) {
   const frames = track.frames.filter(f => f.lm);
   const times = frames.map(f => f.t);
   const P = i => frames.map(f => px(f.lm[i], track));
+  const conf = captureConfidence(track, 'side');
 
   const hipL = P(L.lHip), hipR = P(L.rHip);
   const shL = P(L.lShoulder), shR = P(L.rShoulder);
@@ -360,9 +464,9 @@ function computeMetrics(track, type, profile) {
   const dir = travel >= 0 ? 1 : -1;
   const travelFrac = Math.abs(travel) / track.width;
 
-  /* --- foot contacts → cadence --- */
-  const ankLy = smooth(ankL.map(p => p.y), 5);
-  const ankRy = smooth(ankR.map(p => p.y), 5);
+  /* --- foot contacts → cadence (Savitzky-Golay smoothed ankle height) --- */
+  const ankLy = savgol(ankL.map(p => p.y), 7, 3);
+  const ankRy = savgol(ankR.map(p => p.y), 7, 3);
   const prom = torsoPx * 0.08;
   const cL = findPeaks(ankLy, times, 0.14, prom);
   const cR = findPeaks(ankRy, times, 0.14, prom);
@@ -390,7 +494,7 @@ function computeMetrics(track, type, profile) {
 
   /* --- trunk lean (positive = leaning into the run) --- */
   const leanSeries = frames.map((_, i) => signedLean(hipC[i], shC[i], dir));
-  const leanSm = smooth(leanSeries, 7);
+  const leanSm = savgol(leanSeries, 9, 3);
   const leanMean = median(leanSm);
   const nEarly = Math.max(2, Math.round(leanSm.length * 0.25));
   const leanStart = median(leanSm.slice(0, nEarly));
@@ -411,6 +515,15 @@ function computeMetrics(track, type, profile) {
   const armRangeL = rangeOf(armAngL), armRangeR = rangeOf(armAngR);
   const armSym = Number.isFinite(armRangeL) && Number.isFinite(armRangeR) && Math.max(armRangeL, armRangeR) > 0
     ? (Math.min(armRangeL, armRangeR) / Math.max(armRangeL, armRangeR)) * 100 : NaN;
+
+  /* --- dot-product joint angles (Savitzky-Golay smoothed) --- */
+  const kneeAngL = savgol(frames.map((_, i) => jointAngle(hipL[i], kneeL[i], ankL[i])), 7, 3);
+  const kneeAngR = savgol(frames.map((_, i) => jointAngle(hipR[i], kneeR[i], ankR[i])), 7, 3);
+  const finite = a => a.filter(Number.isFinite);
+  const kneeFlexMin = mean([Math.min(...finite(kneeAngL)), Math.min(...finite(kneeAngR))]);  // tightest knee = peak drive
+  const hipAngL = savgol(frames.map((_, i) => jointAngle(shL[i], hipL[i], kneeL[i])), 7, 3);
+  const hipAngR = savgol(frames.map((_, i) => jointAngle(shR[i], hipR[i], kneeR[i])), 7, 3);
+  const hipExtension = mean([Math.max(...finite(hipAngL)), Math.max(...finite(hipAngR))]);   // max = leg driven behind
 
   /* --- speed & stride (only from a still camera) --- */
   const cameraPanned = travelFrac < 0.25 && contacts.length >= 4;
@@ -449,6 +562,8 @@ function computeMetrics(track, type, profile) {
     armSwingRangeLeftDeg: r1(armRangeL),
     armSwingRangeRightDeg: r1(armRangeR),
     armSymmetryPct: r1(armSym),
+    kneeFlexMinDeg: r1(kneeFlexMin),
+    hipExtensionDeg: r1(hipExtension),
     estTopSpeedMps: r2(speed),
     estStrideLengthM: r2(strideLen),
     strideToHeightRatio: r2(strideRatio),
@@ -456,6 +571,73 @@ function computeMetrics(track, type, profile) {
     speedNote,
     cameraPanned,
     trackingCoverage: r2(track.frames.filter(f => f.lm).length / track.frames.length),
+    view: 'side',
+    sourceFps: r1(track.fps),
+    confidence: conf.score,
+    cameraWarnings: conf.warnings,
+    detectedView: conf.detectedView,
+    orientationRatio: conf.orientationRatio,
+  };
+}
+
+/* ---------------- metrics (frontal view) ---------------- */
+/* Front/back camera: lateral mechanics the side view can't see —
+   knee valgus (inward collapse), torso side-to-side sway, arm crossover. */
+function computeFrontMetrics(track, type, profile) {
+  const frames = track.frames.filter(f => f.lm);
+  const P = i => frames.map(f => px(f.lm[i], track));
+  const conf = captureConfidence(track, 'front');
+
+  const hipL = P(L.lHip), hipR = P(L.rHip), kneeL = P(L.lKnee), kneeR = P(L.rKnee);
+  const ankL = P(L.lAnkle), ankR = P(L.rAnkle), shL = P(L.lShoulder), shR = P(L.rShoulder);
+  const wrL = P(L.lWrist), wrR = P(L.rWrist);
+  const hipW = median(frames.map((_, i) => Math.abs(hipL[i].x - hipR[i].x))) || 1;
+  const shW = median(frames.map((_, i) => Math.abs(shL[i].x - shR[i].x))) || 1;
+
+  // knee valgus: horizontal offset of knee INSIDE the hip→ankle line, as degrees of deviation
+  const valgusDeg = side => {
+    const hp = side === 'L' ? hipL : hipR, kn = side === 'L' ? kneeL : kneeR, an = side === 'L' ? ankL : ankR;
+    const inward = side === 'L' ? 1 : -1;   // left knee caves toward +x(right); mirror for right
+    const dev = frames.map((_, i) => {
+      const legLen = Math.hypot(an[i].x - hp[i].x, an[i].y - hp[i].y) || 1;
+      // expected knee x on the hip-ankle line at knee's height
+      const t = (kn[i].y - hp[i].y) / ((an[i].y - hp[i].y) || 1);
+      const lineX = hp[i].x + t * (an[i].x - hp[i].x);
+      const off = (kn[i].x - lineX) * inward;      // positive = knee caved inward toward midline
+      return Math.atan2(off, legLen * 0.5) * 180 / Math.PI;
+    });
+    return pct(savgol(dev, 7, 3), 85);             // sustained inward collapse, not one jitter
+  };
+  const valgusL = valgusDeg('L'), valgusR = valgusDeg('R');
+  const valgus = mean([valgusL, valgusR]);
+
+  // torso sway: frontal lean of the trunk left/right of vertical, peak-to-peak
+  const shC = frames.map((_, i) => mid(shL[i], shR[i]));
+  const hipC = frames.map((_, i) => mid(hipL[i], hipR[i]));
+  const swayS = savgol(frames.map((_, i) => Math.atan2(shC[i].x - hipC[i].x, -(shC[i].y - hipC[i].y)) * 180 / Math.PI), 9, 3);
+  const swayAmp = (pct(swayS, 95) - pct(swayS, 5)) / 2;
+
+  // arm crossover: how far each wrist crosses the body midline (hip centre), as % of shoulder width
+  const midX = frames.map((_, i) => hipC[i].x);
+  const crossFrac = side => {
+    const wr = side === 'L' ? wrL : wrR, inward = side === 'L' ? 1 : -1;
+    const c = frames.map((_, i) => Math.max(0, (wr[i].x - midX[i]) * inward)); // wrist past midline toward other side
+    return pct(c, 90) / shW * 100;
+  };
+  const crossover = mean([crossFrac('L'), crossFrac('R')]);
+
+  return {
+    sprintType: type, view: 'front',
+    duration: +track.duration.toFixed(2),
+    kneeValgusDeg: r1(valgus), kneeValgusLeftDeg: r1(valgusL), kneeValgusRightDeg: r1(valgusR),
+    torsoSwayDeg: r1(swayAmp),
+    armCrossoverPct: r1(crossover),
+    trackingCoverage: r2(frames.length / track.frames.length),
+    sourceFps: r1(track.fps),
+    confidence: conf.score,
+    cameraWarnings: conf.warnings,
+    detectedView: conf.detectedView,
+    orientationRatio: conf.orientationRatio,
   };
 }
 const r1 = v => (Number.isFinite(v) ? +v.toFixed(1) : null);
@@ -480,16 +662,49 @@ function evaluateMetrics(m) {
   add('Knee drive', m.kneeDriveDeg, '°', ideal.kneeDrive, [20, 110], '90° means thigh parallel to ground');
   add('Step symmetry', m.stepSymmetryPct, '%', [90, 100], [60, 100], 'Even timing left to right');
   add('Arm symmetry', m.armSymmetryPct, '%', ideal.armSym || [88, 100], [50, 100], 'Matched swing both sides');
+  add('Knee flex (drive)', m.kneeFlexMinDeg, '°', degTight(m), [30, 130], 'Tighter knee = faster leg turnover');
+  add('Hip extension', m.hipExtensionDeg, '°', [155, 190], [120, 200], 'Full drive of the leg behind you');
   add('Knee symmetry', m.kneeSymmetryPct, '%', [90, 100], [60, 100], 'Matched drive both sides');
   return g;
 }
+// tightest-knee target shifts a little by phase (accel knee stays more flexed under load)
+function degTight(m) { return m.sprintType === 'acceleration' ? [20, 45] : [25, 55]; }
+
+/* frontal-view gauges */
+function evaluateFront(m) {
+  const g = [];
+  const add = (label, value, unit, band, scale, hint) => {
+    if (value === null || value === undefined) return;
+    const [lo, hi] = band, [min, max] = scale;
+    const status = value < lo ? 'low' : value > hi ? 'high' : 'in';
+    g.push({ label, value, unit, lo, hi, min, max, status, hint });
+  };
+  add('Knee valgus', m.kneeValgusDeg, '°', [-5, 8], [-15, 30], 'Knee tracking over the foot (lower is safer)');
+  add('Torso sway', m.torsoSwayDeg, '°', [0, 5], [0, 20], 'Side-to-side lean wastes forward energy');
+  add('Arm crossover', m.armCrossoverPct, '%', [0, 12], [0, 60], 'Arms drive front-to-back, not across the body');
+  return g;
+}
+
+/* rule-based benchmark alerts — deterministic text from the same bands the
+   gauges use, so the athlete gets hard pass/flag calls alongside the AI coach */
+function benchmarkAlerts(gauges) {
+  return gauges.filter(g => g.status !== 'in').map(g => {
+    const dir = g.status === 'low' ? 'below' : 'above';
+    const target = `${g.lo}–${g.hi}${g.unit}`;
+    return { label: g.label, status: g.status, text: `${g.label} ${g.value}${g.unit} is ${dir} the ${target} target.` };
+  });
+}
 
 /* ---------------- coach prompt ---------------- */
-function analysisSystemPrompt() {
+function analysisSystemPrompt(view = 'side') {
   return `You are "Night Match", an elite sprint mechanics coach analysing ONE athlete's run.
 ${typeof profileSummary === 'function' ? profileSummary() : ''}
 
-You are given objective measurements extracted from video by a pose-tracking model. Read them like a coach reading a force plate: the numbers are real but imperfect, taken from a phone camera.
+You are given objective measurements extracted from ${view === 'front' ? 'a FRONT/BACK' : 'a SIDE-ON'} phone video by a pose-tracking model. Read them like a coach reading a force plate: the numbers are real but imperfect.
+${view === 'front'
+  ? 'This is the frontal view — coach ONLY lateral mechanics (knee valgus, torso sway, arm crossover). Do not mention stride, cadence, speed or forward lean; those need the side view.'
+  : 'This is the side view — the reference angle for stride, cadence, joint angles and lean.'}
+If capture confidence is low, factor that in and hedge — a warned camera setup makes angles less certain.
 
 RULES
 - Base every claim on the measurements provided. Never invent numbers or describe things the data cannot show (you cannot see facial expression, shoe type, surface, or effort level).
@@ -519,39 +734,59 @@ Return ONLY valid JSON, no markdown, in exactly this shape:
 Give exactly 3 fixes, ranked 1-3 by impact.`;
 }
 
-function metricsBrief(m) {
+function metricsBrief(m, alerts) {
   const t = SPRINT_TYPES[m.sprintType];
-  const lines = [
-    `Sprint type: ${t.name} (${t.range})`,
-    `Clip length: ${m.duration}s · steps detected: ${m.stepsDetected} · tracking coverage: ${Math.round(m.trackingCoverage * 100)}%`,
-    '',
-    'MEASURED (reliable):',
-    `- Cadence: ${fmt(m.cadence, 'steps/sec')}`,
-    `- Step timing symmetry: ${fmt(m.stepSymmetryPct, '%')} (100% = perfectly even left/right)`,
-    `- Trunk lean, whole run: ${fmt(m.trunkLeanDeg, '° from upright')} (positive = leaning into the run)`,
-    `- Trunk lean, first quarter: ${fmt(m.trunkLeanStartDeg, '°')} · final quarter: ${fmt(m.trunkLeanEndDeg, '°')}`,
-    `- Peak knee drive: ${fmt(m.kneeDriveDeg, '° thigh from vertical')} (90° = thigh horizontal) · L ${fmt(m.kneeDriveLeftDeg, '°')} / R ${fmt(m.kneeDriveRightDeg, '°')} · symmetry ${fmt(m.kneeSymmetryPct, '%')}`,
-    `- Arm swing range: L ${fmt(m.armSwingRangeLeftDeg, '°')} / R ${fmt(m.armSwingRangeRightDeg, '°')} · symmetry ${fmt(m.armSymmetryPct, '%')}`,
-    '',
-    'ESTIMATED (approximate — scaled from the athlete\'s height, camera angle affects accuracy):',
-    `- Top speed: ${fmt(m.estTopSpeedMps, 'm/s')}`,
-    `- Stride length: ${fmt(m.estStrideLengthM, 'm')} · stride-to-height ratio: ${fmt(m.strideToHeightRatio, '')}`,
-  ];
-  if (m.speedNote) lines.push(`- NOTE: ${m.speedNote}`);
-  lines.push('', `Coaching priorities for this sprint type: ${t.focus.join('; ')}.`);
+  const confLine = `Capture confidence: ${Math.round((m.confidence ?? 1) * 100)}%${m.cameraWarnings?.length ? ' — ' + m.cameraWarnings.join(' ') : ''}`;
+  let lines;
+  if (m.view === 'front') {
+    lines = [
+      `View: FRONTAL (${t.name}). This camera sees lateral mechanics only — do not comment on stride, cadence, speed or forward lean.`,
+      confLine, '',
+      'MEASURED (frontal):',
+      `- Knee valgus (inward collapse): ${fmt(m.kneeValgusDeg, '°')} (0° = knee tracks over foot; higher = caving in) · L ${fmt(m.kneeValgusLeftDeg, '°')} / R ${fmt(m.kneeValgusRightDeg, '°')}`,
+      `- Torso side-to-side sway: ${fmt(m.torsoSwayDeg, '° of lateral lean')}`,
+      `- Arm crossover past midline: ${fmt(m.armCrossoverPct, '% of shoulder width')}`,
+    ];
+  } else {
+    lines = [
+      `View: SIDE-ON (${t.name}, ${t.range})`,
+      `Clip: ${m.duration}s · steps: ${m.stepsDetected} · tracking coverage: ${Math.round(m.trackingCoverage * 100)}% · source ~${m.sourceFps}fps`,
+      confLine, '',
+      'MEASURED (reliable):',
+      `- Cadence: ${fmt(m.cadence, 'steps/sec')}`,
+      `- Step timing symmetry: ${fmt(m.stepSymmetryPct, '%')} (100% = perfectly even L/R)`,
+      `- Trunk lean whole run: ${fmt(m.trunkLeanDeg, '°')} · first quarter ${fmt(m.trunkLeanStartDeg, '°')} · final quarter ${fmt(m.trunkLeanEndDeg, '°')} (positive = into the run)`,
+      `- Peak knee drive (thigh from vertical): ${fmt(m.kneeDriveDeg, '°')} · L ${fmt(m.kneeDriveLeftDeg, '°')} / R ${fmt(m.kneeDriveRightDeg, '°')} · symmetry ${fmt(m.kneeSymmetryPct, '%')}`,
+      `- Tightest knee flexion (dot-product, lower = tighter): ${fmt(m.kneeFlexMinDeg, '°')}`,
+      `- Peak hip extension: ${fmt(m.hipExtensionDeg, '°')}`,
+      `- Arm swing range: L ${fmt(m.armSwingRangeLeftDeg, '°')} / R ${fmt(m.armSwingRangeRightDeg, '°')} · symmetry ${fmt(m.armSymmetryPct, '%')}`,
+      '',
+      'ESTIMATED (approximate — scaled from height, camera-angle sensitive):',
+      `- Top speed: ${fmt(m.estTopSpeedMps, 'm/s')} · stride length ${fmt(m.estStrideLengthM, 'm')} · stride/height ${fmt(m.strideToHeightRatio, '')}`,
+    ];
+    if (m.speedNote) lines.push(`- NOTE: ${m.speedNote}`);
+  }
+  if (alerts?.length) {
+    lines.push('', 'BENCHMARK FLAGS (already computed against elite bands — build your fixes around these):');
+    alerts.forEach(a => lines.push(`- ${a.text}`));
+  }
+  lines.push('', `Coaching priorities: ${t.focus.join('; ')}.`);
   return lines.join('\n');
 }
 const fmt = (v, unit) => (v === null || v === undefined ? 'not measurable' : `${v}${unit ? ' ' + unit : ''}`);
 
 /* ---------------- orchestrator ---------------- */
-async function runAnalysis(file, type, profile, onStatus) {
-  const track = await extractPose(file, onStatus);
+async function runAnalysis(file, type, profile, onStatus, view = 'side') {
+  const track = await extractPose(file, onStatus, { fps: 60 });
 
   const quality = gradeCapture(track);
   if (!quality.ok) return { blocked: true, quality, track };
 
-  const metrics = computeMetrics(track, type, profile);
-  if (!Number.isFinite(metrics.cadence) || metrics.stepsDetected < 3) {
+  const metrics = view === 'front'
+    ? computeFrontMetrics(track, type, profile)
+    : computeMetrics(track, type, profile);
+
+  if (view === 'side' && (!Number.isFinite(metrics.cadence) || metrics.stepsDetected < 3)) {
     return {
       blocked: true, track,
       quality: {
@@ -563,20 +798,55 @@ async function runAnalysis(file, type, profile, onStatus) {
       },
     };
   }
+  if (view === 'front' && metrics.kneeValgusDeg === null && metrics.torsoSwayDeg === null) {
+    return { blocked: true, track, quality: { ok: false, issues: [{ title: 'Couldn’t read your lower body from the front', fix: 'Face the camera straight down the lane, full body in frame, in good light.' }] } };
+  }
+
+  const gauges = view === 'front' ? evaluateFront(metrics) : evaluateMetrics(metrics);
+  const alerts = benchmarkAlerts(gauges);
 
   onStatus?.('Coach is reading your mechanics…', 0.92, 3);
-  const { text } = await callGemini(analysisSystemPrompt(), metricsBrief(metrics), false, true);
+  const { text } = await callGemini(analysisSystemPrompt(view), metricsBrief(metrics, alerts), false, true);
   let report;
   try { report = JSON.parse(cleanJSON(text)); }
   catch { throw new Error('The coach returned an unreadable report. Try again.'); }
 
-  return { blocked: false, metrics, report, track, quality };
+  return { blocked: false, metrics, report, track, quality, gauges, alerts };
 }
 
 /* =====================================================================
    ANALYZE VIEW — controller
    ===================================================================== */
-const az = { type: 'acceleration', capture: 'tripod', busy: false, cancelled: false, file: null, last: null };
+const az = { type: 'acceleration', view: 'side', capture: 'tripod', busy: false, cancelled: false, file: null, last: null };
+
+// strict camera rules, shown for every clip (warn-but-proceed enforces softly)
+const CAMERA_RULES = [
+  'Square to the lane — a true 90° angle. Any diagonal skews the joint angles.',
+  'Lens at hip height (~1 m). Too high or too low distorts vertical measurements.',
+  'Camera 5–7 m from the lane so 3–4 strides fit without panning.',
+  'Dead-still tripod — a panning or shaky camera breaks speed and stride length.',
+  'Film at 60fps or higher (slo-mo); fast shutter (1/500s+) keeps the feet sharp.',
+];
+const FRAMING = {
+  side: {
+    lead: 'Side-on is the reference angle — it reads stride, cadence, joint angles and lean.',
+    steps: [
+      'Set the tripod square to your lane, hip height, 5–7 m to the side.',
+      'Frame 3–4 full strides with your whole body in shot the entire time.',
+      'Start recording, then run through the zone at full effort.',
+      'Keep the clip under ~8 seconds. Slo-mo strongly preferred.',
+    ],
+  },
+  front: {
+    lead: 'Front/back view catches what the side can’t: knee collapse, torso sway and arm crossover.',
+    steps: [
+      'Set the tripod straight down the lane, ahead of or behind you, hip height, 5–7 m out.',
+      'Run directly toward or away from the lens, staying centred and fully in frame.',
+      'Start recording, run at full effort through the zone.',
+      'This view does not measure stride, cadence or speed — use side-on for those.',
+    ],
+  },
+};
 
 function initAnalyze() {
   renderTypes();
@@ -585,6 +855,13 @@ function initAnalyze() {
   $('#azTypes').addEventListener('click', e => {
     const card = e.target.closest('[data-type]'); if (!card) return;
     az.type = card.dataset.type; renderTypes(); renderGuide();
+  });
+
+  const viewSeg = $('.az-view-seg');
+  if (viewSeg) viewSeg.addEventListener('click', e => {
+    const b = e.target.closest('.seg-btn'); if (!b) return;
+    $$('.seg-btn', viewSeg).forEach(x => x.classList.remove('on'));
+    b.classList.add('on'); az.view = b.dataset.view; renderGuide();
   });
 
   const seg = $('.az-seg');
@@ -616,10 +893,14 @@ function renderTypes() {
 }
 
 function renderGuide() {
-  const t = SPRINT_TYPES[az.type], c = CAPTURE_SETUPS[az.capture];
+  const fr = FRAMING[az.view], c = CAPTURE_SETUPS[az.capture];
   $('#azGuide').innerHTML = `
-    <div class="az-guide-lead">${esc(t.film.distance)}</div>
-    <ol class="az-guide-list">${t.film.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+    <div class="az-guide-lead">${esc(fr.lead)}</div>
+    <ol class="az-guide-list">${fr.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+    <div class="az-guide-tips">
+      <div class="az-guide-tips-h">Camera rules</div>
+      <ul>${CAMERA_RULES.map(s => `<li>${esc(s)}</li>`).join('')}</ul>
+    </div>
     <div class="az-guide-tips">
       <div class="az-guide-tips-h">${esc(c.name)}</div>
       <ul>${c.tips.map(s => `<li>${esc(s)}</li>`).join('')}</ul>
@@ -640,7 +921,7 @@ async function startAnalysis(file) {
 
   try {
     const profile = store.get('profile');
-    const out = await runAnalysis(file, az.type, profile, setStatus);
+    const out = await runAnalysis(file, az.type, profile, setStatus, az.view);
     if (az.cancelled) return;
     az.last = out;
     if (out.blocked) renderBlocked(out);
@@ -700,25 +981,44 @@ function renderBlocked(out) {
 function renderReport(out, file) {
   const { metrics: m, report: r } = out;
   const t = SPRINT_TYPES[m.sprintType];
+  const front = m.view === 'front';
   const el = $('#azResult');
   el.classList.remove('hidden');
 
   const impactClass = i => ({ high: 'hi', medium: 'md', low: 'lo' }[String(i || '').toLowerCase()] || 'md');
-  const gauges = evaluateMetrics(m);
-  const est = [
+  const gauges = out.gauges || (front ? evaluateFront(m) : evaluateMetrics(m));
+  const alerts = out.alerts || benchmarkAlerts(gauges);
+  const est = front ? [] : [
     ['Top speed', m.estTopSpeedMps, 'm/s'],
     ['Stride length', m.estStrideLengthM, 'm'],
     ['Stride ÷ height', m.strideToHeightRatio, ''],
   ].filter(x => x[1] !== null && x[1] !== undefined);
 
+  const conf = m.confidence ?? 1;
+  const confBanner = (m.cameraWarnings?.length)
+    ? `<div class="az-conf az-conf--${conf < 0.6 ? 'low' : 'mid'}">
+        <div class="az-conf-h">${WARN}Capture confidence ${Math.round(conf * 100)}% — results shown, read them with this in mind</div>
+        <ul>${m.cameraWarnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>
+       </div>` : '';
+
+  const benchBlock = alerts.length ? `
+    <div class="az-bench">
+      <div class="az-sec-h"><span>Benchmark flags</span><em>vs elite bands</em></div>
+      <div class="az-bench-chips">${alerts.map(a => `<span class="az-chip az-chip--${a.status}">${esc(a.text)}</span>`).join('')}</div>
+    </div>` : `
+    <div class="az-bench"><div class="az-bench-clear">${SVG.target} Every measured metric is inside its elite band.</div></div>`;
+
+  const tagText = front ? `Frontal · ${t.name}` : `${t.name} · ${t.range}`;
+
   el.innerHTML = `
     <div class="az-report">
       <header class="az-headline">
-        <span class="az-tag">${esc(t.name)} · ${esc(t.range)}</span>
+        <span class="az-tag">${esc(tagText)}</span>
         <h2>${esc(r.headline || 'Your run, measured.')}</h2>
       </header>
 
-      ${gaitStripHTML(m)}
+      ${confBanner}
+      ${front ? '' : gaitStripHTML(m)}
 
       <div class="az-cols">
         <div class="az-col-main">
@@ -739,6 +1039,7 @@ function renderReport(out, file) {
               </article>`).join('')}
           </div>
 
+          ${benchBlock}
           ${r.coachNote ? `<div class="ans-quick">${esc(r.coachNote)}</div>` : ''}
         </div>
 
@@ -749,7 +1050,7 @@ function renderReport(out, file) {
           </div>` : ''}
 
           <div class="az-gauges">
-            <div class="az-sec-h"><span>Measured</span><em>vs ${esc(t.name.toLowerCase())} target</em></div>
+            <div class="az-sec-h"><span>Measured</span><em>${front ? 'lateral' : 'vs ' + esc(t.name.toLowerCase())} target</em></div>
             ${gauges.map(gaugeHTML).join('')}
           </div>
 
@@ -771,17 +1072,19 @@ function renderReport(out, file) {
             </label>
           </div>
 
-          <p class="az-note">${m.speedNote ? esc(m.speedNote) + ' ' : ''}Read from ${m.stepsDetected} foot contacts over ${m.duration}s, ${Math.round(m.trackingCoverage * 100)}% tracked. Angles and cadence are measured; speed and stride are estimated from your height and shift with camera angle.</p>
+          <p class="az-note">${m.speedNote ? esc(m.speedNote) + ' ' : ''}${front
+            ? `Frontal read of ${Math.round(m.trackingCoverage * 100)}% tracked frames. Lateral angles only — no stride, cadence or speed from this view.`
+            : `Read from ${m.stepsDetected} foot contacts over ${m.duration}s, ${Math.round(m.trackingCoverage * 100)}% tracked. Angles and cadence are measured with Savitzky-Golay smoothing; speed and stride are estimated from your height.`}</p>
         </aside>
       </div>
 
       <div class="ans-actions">
+        <button class="icon-btn az-export"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>Download annotated clip</button>
         <button class="icon-btn az-save"><svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>Save</button>
         <button class="icon-btn az-again"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.36 2.64L3 8"/><path d="M3 3v5h5"/></svg>Analyse another</button>
       </div>
     </div>`;
 
-  // video + skeleton playback
   const video = $('#azVideo', el);
   video.src = URL.createObjectURL(file);
   const canvas = $('#azSkeleton', el);
@@ -791,12 +1094,13 @@ function renderReport(out, file) {
     if (toggle.checked) drawSkeletonLoop(video, canvas, out.track);
   });
 
+  $('.az-export', el).addEventListener('click', e => exportAnnotated(out, file, e.currentTarget));
   $('.az-again', el).addEventListener('click', resetAnalyze);
   $('.az-save', el).addEventListener('click', e => {
     const saved = store.get('saved', []);
     saved.unshift({
       id: uid(), ts: Date.now(), type: 'analysis',
-      question: `${t.name} analysis — ${r.headline || ''}`.trim(),
+      question: `${t.name}${front ? ' (frontal)' : ''} analysis — ${r.headline || ''}`.trim(),
       analysis: { metrics: m, report: r },
     });
     store.set('saved', saved);
@@ -866,31 +1170,32 @@ const BONES = [
   [23, 25], [25, 27], [24, 26], [26, 28],
   [27, 31], [28, 32],
 ];
+function drawSkeletonFrame(ctx, lm, w, h) {
+  const X = p => p.x * w, Y = p => p.y * h;
+  const lw = Math.max(2, w / 320);
+  ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.strokeStyle = '#ff4d2e';
+  ctx.shadowColor = 'rgba(255,77,46,.6)'; ctx.shadowBlur = lw * 3;
+  for (const [a, b] of BONES) {
+    const p = lm[a], q = lm[b];
+    if (!p || !q || (p.visibility ?? 1) < 0.4 || (q.visibility ?? 1) < 0.4) continue;
+    ctx.beginPath(); ctx.moveTo(X(p), Y(p)); ctx.lineTo(X(q), Y(q)); ctx.stroke();
+  }
+  ctx.shadowBlur = 0; ctx.fillStyle = '#ecefe9';
+  for (const i of [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]) {
+    const p = lm[i]; if (!p || (p.visibility ?? 1) < 0.4) continue;
+    ctx.beginPath(); ctx.arc(X(p), Y(p), lw * 1.3, 0, Math.PI * 2); ctx.fill();
+  }
+}
 function drawSkeletonLoop(video, canvas, track) {
   const ctx = canvas.getContext('2d');
   let raf;
   const draw = () => {
     if (canvas.classList.contains('hidden')) { cancelAnimationFrame(raf); return; }
     const rect = video.getBoundingClientRect();
-    if (canvas.width !== rect.width || canvas.height !== rect.height) {
-      canvas.width = rect.width; canvas.height = rect.height;
-    }
+    if (canvas.width !== rect.width || canvas.height !== rect.height) { canvas.width = rect.width; canvas.height = rect.height; }
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const f = nearestFrame(track.frames, video.currentTime);
-    if (f?.lm) {
-      const X = p => p.x * canvas.width, Y = p => p.y * canvas.height;
-      ctx.lineWidth = 2.5; ctx.strokeStyle = '#ff4d2e'; ctx.shadowColor = 'rgba(255,77,46,.6)'; ctx.shadowBlur = 8;
-      for (const [a, b] of BONES) {
-        const p = f.lm[a], q = f.lm[b];
-        if (!p || !q || (p.visibility ?? 1) < 0.4 || (q.visibility ?? 1) < 0.4) continue;
-        ctx.beginPath(); ctx.moveTo(X(p), Y(p)); ctx.lineTo(X(q), Y(q)); ctx.stroke();
-      }
-      ctx.shadowBlur = 0; ctx.fillStyle = '#ecefe9';
-      for (const i of [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]) {
-        const p = f.lm[i]; if (!p || (p.visibility ?? 1) < 0.4) continue;
-        ctx.beginPath(); ctx.arc(X(p), Y(p), 3, 0, Math.PI * 2); ctx.fill();
-      }
-    }
+    if (f?.lm) drawSkeletonFrame(ctx, f.lm, canvas.width, canvas.height);
     raf = requestAnimationFrame(draw);
   };
   draw();
@@ -899,4 +1204,56 @@ function nearestFrame(frames, t) {
   let best = null, bd = Infinity;
   for (const f of frames) { const d = Math.abs(f.t - t); if (d < bd) { bd = d; best = f; } }
   return bd < 0.2 ? best : null;
+}
+
+/* export an annotated .webm: original clip + skeleton + burned-in headline
+   and the key benchmark flag, rendered live via canvas capture */
+async function exportAnnotated(out, file, btn) {
+  if (!window.MediaRecorder) { toast('This browser can’t export video', false); return; }
+  const orig = btn.innerHTML; btn.disabled = true; btn.textContent = 'Rendering…';
+  const { track, report: r, alerts } = out;
+  const banner = (alerts && alerts[0]) ? alerts[0].text : (r.headline || '');
+  let url;
+  try {
+    url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.src = url; video.muted = true; video.playsInline = true;
+    await new Promise((res, rej) => { video.onloadeddata = res; video.onerror = () => rej(new Error('read fail')); setTimeout(() => rej(new Error('timeout')), 15000); });
+    const w = Math.min(720, video.videoWidth || 720), scale = w / (video.videoWidth || w), h = Math.round((video.videoHeight || 405) * scale);
+    const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    const stream = canvas.captureStream(30);
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+    const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6000000 });
+    const chunks = []; rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    const stopped = new Promise(res => rec.onstop = res);
+    rec.start();
+    await video.play();
+    await new Promise(resolve => {
+      const step = () => {
+        ctx.drawImage(video, 0, 0, w, h);
+        const f = nearestFrame(track.frames, video.currentTime);
+        if (f?.lm) drawSkeletonFrame(ctx, f.lm, w, h);
+        const pad = Math.round(w * 0.03), fs = Math.max(13, Math.round(w * 0.032));
+        ctx.font = `600 ${fs}px Inter, system-ui, sans-serif`;
+        const txt = banner.length > 64 ? banner.slice(0, 62) + '…' : banner;
+        const tw = ctx.measureText(txt).width;
+        ctx.fillStyle = 'rgba(8,9,11,.6)'; ctx.fillRect(0, h - fs - pad * 1.6, Math.min(w, tw + pad * 2), fs + pad * 1.4);
+        ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(txt, pad, h - (fs + pad * 1.6) / 2 - 2);
+        ctx.fillStyle = '#ff4d2e'; ctx.font = `600 ${Math.round(fs * 0.7)}px Inter, system-ui, sans-serif`;
+        ctx.fillText('NIGHT MATCH', pad, pad);
+        if (video.ended || video.paused) { resolve(); return; }
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+      video.onended = () => resolve();
+    });
+    rec.stop(); await stopped;
+    const blob = new Blob(chunks, { type: 'video/webm' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `night-match-sprint-${Date.now()}.webm`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('Annotated clip saved');
+  } catch { toast('Could not render the clip', false); }
+  finally { if (url) URL.revokeObjectURL(url); btn.disabled = false; btn.innerHTML = orig; }
 }
